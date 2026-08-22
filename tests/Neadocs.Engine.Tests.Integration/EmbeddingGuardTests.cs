@@ -275,7 +275,7 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
         ThrowingEmbeddingProvider provider = new("guard-model", 16, () => true);
         EmbeddingStore store = await BuildStoreAsync(options, provider);
 
-        PendingEmbedding pending = new(chunkId, "hash-1", "some body text");
+        PendingEmbedding pending = new(chunkId, "some body text", "en");
 
         await store.EmbedAsync([pending], CancellationToken.None);
         await store.EmbedAsync([pending], CancellationToken.None);
@@ -285,6 +285,84 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
         (await ScalarAsync(
             $"SELECT count(*) FROM {_schema}.embedding_backlog WHERE last_error LIKE '%vendor is down%'"))
             .Should().Be(1, "the failure has to be visible, not merely counted");
+    }
+
+    /// <summary>
+    /// Two workers draining the backlog must take different rows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A plain SELECT is shared, not claimed. Every replica running the backlog worker selected
+    /// the same due rows on the same tick and embedded the same chunks. Writing vectors is
+    /// idempotent so nothing looked wrong, but the provider is billed per call — so the backlog's
+    /// cost multiplied by the replica count — and a failure bumps <c>attempts</c> against
+    /// <c>MaxAttempts</c>. Three replicas failing on one transient outage spend three attempts per
+    /// cycle, so a chunk burns a ten-attempt budget in three cycles and is abandoned for good: no
+    /// vector, no error, search quietly degraded for that chunk forever.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TwoWorkersDrainingTheBacklogClaimDifferentRows()
+    {
+        DocumentEngineOptions options = Options(Model(16));
+        await Migrator(options).MigrateAsync(CancellationToken.None);
+
+        ThrowingEmbeddingProvider failing = new("guard-model", 16, () => true);
+        EmbeddingStore store = await BuildStoreAsync(options, failing);
+
+        // Three chunks that fail to embed, so all three land in the backlog and come due.
+        List<Guid> chunkIds = [];
+        for (int i = 0; i < 3; i++)
+        {
+            Guid id = await SeedChunkAsync();
+            chunkIds.Add(id);
+            await store.EmbedAsync([new PendingEmbedding(id, "some body text", "en")], CancellationToken.None);
+        }
+
+        await MakeBacklogDueAsync();
+
+        // Two workers asking at the same moment, as two replicas on the same tick would.
+        Task<List<PendingEmbedding>> first = store.DueBacklogAsync("guard_model", 3, 10, CancellationToken.None);
+        Task<List<PendingEmbedding>> second = store.DueBacklogAsync("guard_model", 3, 10, CancellationToken.None);
+
+        List<PendingEmbedding>[] batches = await Task.WhenAll(first, second);
+
+        List<Guid> handed = [.. batches[0].Select(p => p.ChunkId), .. batches[1].Select(p => p.ChunkId)];
+
+        handed.Should().OnlyHaveUniqueItems(
+            "a row handed to two workers is embedded twice — billed twice, and its retry budget "
+            + "spent twice as fast");
+        handed.Should().NotBeEmpty("the due rows still have to reach a worker");
+    }
+
+    [Fact]
+    public async Task AClaimedRowIsNotHandedOutAgainImmediately()
+    {
+        // The lease. A worker that has taken a row is going to spend a network round trip on it,
+        // and nothing else should pick it up during that window.
+        DocumentEngineOptions options = Options(Model(16));
+        await Migrator(options).MigrateAsync(CancellationToken.None);
+
+        Guid chunkId = await SeedChunkAsync();
+        EmbeddingStore store = await BuildStoreAsync(options, new ThrowingEmbeddingProvider("guard-model", 16, () => true));
+        await store.EmbedAsync([new PendingEmbedding(chunkId, "some body text", "en")], CancellationToken.None);
+        await MakeBacklogDueAsync();
+
+        (await store.DueBacklogAsync("guard_model", 10, 10, CancellationToken.None))
+            .Should().ContainSingle("the row is due");
+
+        (await store.DueBacklogAsync("guard_model", 10, 10, CancellationToken.None))
+            .Should().BeEmpty("it is leased to the first caller until the lease expires");
+    }
+
+    /// <summary>Brings every backlog row due now, so the claim can be exercised without waiting.</summary>
+    private async Task MakeBacklogDueAsync()
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync();
+        await using NpgsqlCommand command = connection.CreateCommand();
+        command.CommandText = $"UPDATE {_schema}.embedding_backlog SET next_attempt_at = now() - interval '1 hour'";
+        await command.ExecuteNonQueryAsync();
     }
 
     [Fact]

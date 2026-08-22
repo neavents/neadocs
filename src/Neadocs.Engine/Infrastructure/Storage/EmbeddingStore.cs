@@ -380,22 +380,65 @@ public sealed class EmbeddingStore
         return (long)(await command.ExecuteScalarAsync(ct) ?? 0L);
     }
 
+    /// <summary>
+    /// Claims a batch of backlog rows for this worker and returns them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A plain SELECT here is shared, not claimed.</b> Every replica running the backlog worker
+    /// selected the same due rows on the same tick, so each one embedded the same chunks. Writing
+    /// the vectors is idempotent, so nothing looked broken — but two things were.
+    /// </para>
+    /// <para>
+    /// The embedding provider is billed per call, so the cost of the backlog multiplied by the
+    /// replica count. And a failure bumps <c>attempts</c>, which is checked against
+    /// <c>MaxAttempts</c> — three replicas failing on the same transient provider outage spend
+    /// three attempts per cycle instead of one, so a chunk exhausts a ten-attempt budget in three
+    /// cycles and is then abandoned for good. No vector, no error, and search quietly degraded for
+    /// that chunk forever.
+    /// </para>
+    /// <para>
+    /// Claimed by pushing <c>next_attempt_at</c> forward — a lease — in the same statement that
+    /// selects, with <c>FOR UPDATE SKIP LOCKED</c> so concurrent workers take disjoint rows rather
+    /// than queueing behind each other. The row lock is held only for that short UPDATE, never
+    /// across the provider call, which would tie up a connection for the length of a network round
+    /// trip. A worker that dies mid-batch loses only the lease: the rows come due again when it
+    /// expires.
+    /// </para>
+    /// </remarks>
     public async Task<List<PendingEmbedding>> DueBacklogAsync(string slug, int limit, int maxAttempts, CancellationToken ct)
     {
         await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
         await using NpgsqlCommand command = _connections.CreateCommand(connection, $"""
-            SELECT b.chunk_id, c.content, c.normalizer_tag
-            FROM {_tables.EmbeddingBacklog} b
-            JOIN {_tables.Chunks} c ON c.id = b.chunk_id
-            WHERE b.model_slug = @slug
-              AND b.next_attempt_at <= now()
-              AND b.attempts < @maxAttempts
-            ORDER BY b.next_attempt_at
-            LIMIT @limit
+            WITH claimed AS (
+                SELECT b.chunk_id
+                FROM {_tables.EmbeddingBacklog} b
+                WHERE b.model_slug = @slug
+                  AND b.next_attempt_at <= now()
+                  AND b.attempts < @maxAttempts
+                ORDER BY b.next_attempt_at
+                LIMIT @limit
+                FOR UPDATE SKIP LOCKED
+            ),
+            leased AS (
+                UPDATE {_tables.EmbeddingBacklog} b
+                SET next_attempt_at = now() + make_interval(secs => @leaseSeconds)
+                FROM claimed
+                WHERE b.chunk_id = claimed.chunk_id AND b.model_slug = @slug
+                RETURNING b.chunk_id
+            )
+            SELECT leased.chunk_id, c.content, c.normalizer_tag
+            FROM leased
+            JOIN {_tables.Chunks} c ON c.id = leased.chunk_id
             """);
         command.Parameters.AddWithValue("slug", slug);
         command.Parameters.AddWithValue("limit", limit);
         command.Parameters.AddWithValue("maxAttempts", maxAttempts);
+
+        // Long enough to cover a slow provider call for a whole batch, short enough that a worker
+        // killed mid-batch does not strand its rows for long. Deliberately NOT the retry backoff:
+        // this is how long the work is expected to take, not how long to wait after it fails.
+        command.Parameters.AddWithValue("leaseSeconds", 300d);
 
         List<PendingEmbedding> due = [];
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
