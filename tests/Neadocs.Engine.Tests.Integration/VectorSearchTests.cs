@@ -35,6 +35,17 @@ public sealed class VectorTestHost : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Provider", "deterministic");
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Model", "probe-model");
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Dimensions", "128");
+
+        // The similarity floor belongs to the model. The global default of 0.60 was measured
+        // against Gemini; the deterministic provider is a feature-hashing bag of words and its
+        // scale is nothing like that. Measured against this fixture's corpus: an unrelated query
+        // scores 0.0000, a relevant single-word query 0.3162, and a near-verbatim title query
+        // 0.6708. 0.20 sits in the gap, the same way 0.60 does for Gemini.
+        //
+        // Without this the tests below could not pass and were not the engine's fault: every
+        // neighbour fell under a floor calibrated for a different model, which is exactly the
+        // production failure EmbeddingModelOptions.MinSimilarity exists to prevent.
+        Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__MinSimilarity", "0.20");
         Environment.SetEnvironmentVariable("Logging__LogLevel__Npgsql", "Warning");
         Environment.SetEnvironmentVariable("Logging__LogLevel__Microsoft.AspNetCore", "Warning");
     }
@@ -84,6 +95,7 @@ public sealed class VectorTestHost : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Provider", null);
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Model", null);
         Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__Dimensions", null);
+        Environment.SetEnvironmentVariable("DocumentEngine__EmbeddingModels__0__MinSimilarity", null);
 
         await base.DisposeAsync();
     }

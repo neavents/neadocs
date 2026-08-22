@@ -1,3 +1,4 @@
+using Neadocs.Engine.Infrastructure.Text;
 namespace Neadocs.Engine.Tests.Integration;
 
 using System;
@@ -219,7 +220,7 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
 
         EmbeddingStore store = await BuildStoreAsync(options, provider);
 
-        await store.EmbedAsync([new PendingEmbedding(chunkId, "hash-1", "some body text")], CancellationToken.None);
+        await store.EmbedAsync([new PendingEmbedding(chunkId, "some body text", "en")], CancellationToken.None);
 
         (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog"))
             .Should().Be(1, "a vendor outage must never lose the chunk");
@@ -244,7 +245,7 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
         ThrowingEmbeddingProvider provider = new("guard-model", 16, () => failing);
         EmbeddingStore store = await BuildStoreAsync(options, provider);
 
-        await store.EmbedAsync([new PendingEmbedding(chunkId, "hash-1", "some body text")], CancellationToken.None);
+        await store.EmbedAsync([new PendingEmbedding(chunkId, "some body text", "en")], CancellationToken.None);
         (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog")).Should().Be(1);
 
         failing = false;
@@ -338,6 +339,7 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
 
         return new EmbeddingStore(
             factory, new SchemaTables(options), chain, registry, vectorType,
+            new NormalizerRegistry(RuleSetLoader.Load(null)),
             NullLogger<EmbeddingStore>.Instance);
     }
 

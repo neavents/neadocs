@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Neadocs.Engine.Infrastructure.Configuration;
 using Neadocs.Engine.Infrastructure.Diagnostics;
@@ -24,6 +25,7 @@ public sealed class VectorSearch
     private readonly NormalizerRegistry _normalizers;
     private readonly VectorTypeInfo _vectorType;
     private readonly DocumentEngineOptions _options;
+    private readonly ILogger<VectorSearch> _logger;
 
     public VectorSearch(
         NpgsqlDataSourceFactory connections,
@@ -33,7 +35,8 @@ public sealed class VectorSearch
         EmbeddingModelRegistry models,
         NormalizerRegistry normalizers,
         VectorTypeInfo vectorType,
-        IOptions<DocumentEngineOptions> options)
+        IOptions<DocumentEngineOptions> options,
+        ILogger<VectorSearch> logger)
     {
         _connections = connections;
         _tables = tables;
@@ -43,6 +46,7 @@ public sealed class VectorSearch
         _normalizers = normalizers;
         _vectorType = vectorType;
         _options = options.Value;
+        _logger = logger;
     }
 
     public bool Available => _chain.HasProvider && _models.Primary is not null && _vectorType.Available;
@@ -65,6 +69,13 @@ public sealed class VectorSearch
 
         using Activity? activity = NeadocsActivitySources.Search.StartActivity("search.vector");
         activity?.SetTag(NeadocsTags.Model, model.Slug);
+
+        // The floor belongs to the MODEL, not to the engine. Cosine similarity is comparable
+        // across queries only for a fixed model, and the global default was measured against one
+        // specific model on one specific corpus — applying it to another is not an approximation,
+        // it is a number that means nothing there.
+        double minSimilarity = model.MinSimilarity ?? _options.VectorMinSimilarity;
+        activity?.SetTag("search.vector.min_similarity", minSimilarity);
 
         string folded = _normalizers.Normalize(locale, rawQuery);
 
@@ -122,6 +133,9 @@ public sealed class VectorSearch
         List<RankedChunk> hits = [];
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
 
+        int rejected = 0;
+        double best = 0;
+
         while (await reader.ReadAsync(ct))
         {
             double similarity = reader.GetDouble(2);
@@ -129,8 +143,10 @@ public sealed class VectorSearch
             // Filtered here rather than in the WHERE clause: a predicate on the distance expression
             // would stop the HNSW index being used and turn every search into a sequential scan.
             // The candidate list is bounded and already ordered, so this costs nothing.
-            if (similarity < _options.VectorMinSimilarity)
+            if (similarity < minSimilarity)
             {
+                rejected++;
+                best = Math.Max(best, similarity);
                 continue;
             }
 
@@ -138,6 +154,23 @@ public sealed class VectorSearch
         }
 
         activity?.SetTag(NeadocsTags.HitCount, hits.Count);
+
+        // "Neighbours existed and every one was below the floor" is a different state from "the
+        // index returned nothing", and only the first can be caused by a threshold that does not
+        // suit the model. Both otherwise present as an empty result — which this engine
+        // deliberately makes reachable, so the misconfiguration is indistinguishable from a
+        // genuine absence of an answer unless it is recorded here.
+        if (hits.Count == 0 && rejected > 0)
+        {
+            activity?.SetTag("search.vector.all_below_threshold", true);
+            activity?.SetTag("search.vector.best_similarity", best);
+
+            _logger.LogDebug(
+                "Vector search for model {Model} discarded all {Rejected} neighbour(s): best similarity "
+                + "{Best:F4} is below the {Floor:F2} floor. If this is persistent the floor does not "
+                + "suit this model.",
+                model.Slug, rejected, best, minSimilarity);
+        }
 
         return hits;
     }

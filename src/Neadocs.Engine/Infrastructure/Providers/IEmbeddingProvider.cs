@@ -27,10 +27,12 @@ public sealed record EmbeddingModelDescriptor(
     string Model,
     string Slug,
     int Dimensions,
-    bool Retired)
+    bool Retired,
+    double? MinSimilarity = null)
 {
     public static EmbeddingModelDescriptor From(EmbeddingModelOptions options) =>
-        new(options.Provider, options.Model, ModelSlug.From(options.Model), options.Dimensions, options.Retired);
+        new(options.Provider, options.Model, ModelSlug.From(options.Model), options.Dimensions,
+            options.Retired, options.MinSimilarity);
 }
 
 public sealed class EmbeddingModelRegistry

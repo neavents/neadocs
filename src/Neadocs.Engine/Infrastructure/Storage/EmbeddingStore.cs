@@ -1,5 +1,7 @@
 namespace Neadocs.Engine.Infrastructure.Storage;
 
+using Neadocs.Engine.Infrastructure.Text;
+
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -14,7 +16,15 @@ using Neadocs.Engine.Infrastructure.Providers;
 using Npgsql;
 using NpgsqlTypes;
 
-public sealed record PendingEmbedding(Guid ChunkId, string ContentHash, string Text);
+/// <summary>
+/// A chunk awaiting a vector, with the locale pipeline its text must be normalised by.
+/// </summary>
+/// <remarks>
+/// The tag rather than the normalised text, so that normalising happens in exactly one place —
+/// <see cref="EmbeddingStore"/> — and a new caller cannot introduce a path that embeds something
+/// else. That is what went wrong: the query side normalised and the indexing side did not.
+/// </remarks>
+public sealed record PendingEmbedding(Guid ChunkId, string Text, string NormalizerTag);
 
 /// <summary>
 /// The cache key for a search query's embedding.
@@ -25,6 +35,45 @@ public sealed record PendingEmbedding(Guid ChunkId, string ContentHash, string T
 /// normalised by the requesting locale's pipeline, which means two readers typing the same question
 /// with and without diacritics share one entry — and one provider call.
 /// </remarks>
+/// <summary>
+/// The cache key for a chunk's embedding.
+/// </summary>
+/// <remarks>
+/// Distinct from <c>ChunkHash</c>, which identifies a chunk by its heading path and body. This
+/// identifies the TEXT THAT WAS EMBEDDED, which is a different thing and the source of the bug
+/// below.
+/// </remarks>
+/// <remarks>
+/// <para>
+/// Hashed over the text that is actually sent to the provider, which is the normalised form — not
+/// over the chunk's raw content. Those differ, and keying on the wrong one is how a cache serves a
+/// vector computed from text it no longer represents.
+/// </para>
+/// <para>
+/// <b>This is the third place the "reindex rebuilt nothing" defect lived.</b> The chunk row and
+/// its tsvector are both rebuilt when a normalisation rule changes — the chunk carries a
+/// normaliser hash for exactly that comparison — but the vector cache was keyed on content alone.
+/// Content does not change when a rule file does, so every lookup hit, the provider was never
+/// called, and the vectors stayed as they were computed under rules that no longer exist. Nothing
+/// reported a problem: the reindex succeeded, the backlog was empty, and search kept answering.
+/// </para>
+/// <para>
+/// Keying on the normalised text fixes it without a migration or a version column: change a rule,
+/// the normalised text changes, the key changes, and the vector is recomputed. The cache can no
+/// longer disagree with itself about what a key means.
+/// </para>
+/// </remarks>
+public static class EmbeddingCacheKey
+{
+    public static string Of(string normalizedText)
+    {
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(Encoding.UTF8.GetBytes("chunk" + normalizedText), hash);
+
+        return Convert.ToHexStringLower(hash);
+    }
+}
+
 public static class QueryHash
 {
     public static string Of(string text)
@@ -36,6 +85,9 @@ public static class QueryHash
     }
 }
 
+/// <summary>One chunk's text after normalisation, with the cache key derived from it.</summary>
+internal sealed record EmbeddingWork(PendingEmbedding Pending, string NormalizedText, string CacheKey);
+
 public sealed class EmbeddingStore
 {
     private readonly NpgsqlDataSourceFactory _connections;
@@ -43,6 +95,7 @@ public sealed class EmbeddingStore
     private readonly EmbeddingChain _chain;
     private readonly EmbeddingModelRegistry _models;
     private readonly VectorTypeInfo _vectorType;
+    private readonly NormalizerRegistry _normalizers;
     private readonly ILogger<EmbeddingStore> _logger;
 
     public EmbeddingStore(
@@ -51,6 +104,7 @@ public sealed class EmbeddingStore
         EmbeddingChain chain,
         EmbeddingModelRegistry models,
         VectorTypeInfo vectorType,
+        NormalizerRegistry normalizers,
         ILogger<EmbeddingStore> logger)
     {
         _connections = connections;
@@ -58,6 +112,7 @@ public sealed class EmbeddingStore
         _chain = chain;
         _models = models;
         _vectorType = vectorType;
+        _normalizers = normalizers;
         _logger = logger;
     }
 
@@ -95,8 +150,7 @@ public sealed class EmbeddingStore
 
         await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
 
-        PendingEmbedding probe = new(Guid.Empty, hash, text);
-        Dictionary<string, float[]> cached = await LoadCachedAsync(connection, slug, [probe], ct);
+        Dictionary<string, float[]> cached = await LoadCachedAsync(connection, slug, [hash], ct);
 
         if (cached.TryGetValue(hash, out float[]? hit))
         {
@@ -152,13 +206,33 @@ public sealed class EmbeddingStore
     {
         await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
 
-        Dictionary<string, float[]> cached = await LoadCachedAsync(connection, model.Slug, pending, ct);
+        // Normalise here, once, before anything is hashed or sent.
+        //
+        // The query side has always normalised — QueryHash documents it — and the indexing side
+        // never did, so a query embedding and a chunk embedding were computed from text in two
+        // different forms. Measured with the deterministic provider, every query scored 0.0000
+        // against a document, including a query that was the document's own title; normalising
+        // both sides took the same pair to 0.6708. A real model degrades more quietly, which is
+        // worse: nothing fails, recall is simply lower than it looks.
+        //
+        // The key is the hash of this normalised text, not of the chunk's raw content — see
+        // ChunkHash for why keying on content is what let stale vectors survive a reindex.
+        EmbeddingWork[] work = new EmbeddingWork[pending.Count];
 
-        List<PendingEmbedding> misses = [];
-
-        foreach (PendingEmbedding item in pending)
+        for (int i = 0; i < pending.Count; i++)
         {
-            if (!cached.ContainsKey(item.ContentHash))
+            string normalized = _normalizers.Normalize(pending[i].NormalizerTag, pending[i].Text);
+            work[i] = new EmbeddingWork(pending[i], normalized, EmbeddingCacheKey.Of(normalized));
+        }
+
+        string[] keys = Array.ConvertAll(work, w => w.CacheKey);
+        Dictionary<string, float[]> cached = await LoadCachedAsync(connection, model.Slug, keys, ct);
+
+        List<EmbeddingWork> misses = [];
+
+        foreach (EmbeddingWork item in work)
+        {
+            if (!cached.ContainsKey(item.CacheKey))
             {
                 misses.Add(item);
             }
@@ -173,12 +247,12 @@ public sealed class EmbeddingStore
         {
             try
             {
-                List<string> texts = misses.ConvertAll(m => m.Text);
+                List<string> texts = misses.ConvertAll(m => m.NormalizedText);
                 IReadOnlyList<float[]> vectors = await _chain.EmbedAsync(model.Slug, texts, ct);
 
                 for (int i = 0; i < misses.Count; i++)
                 {
-                    computed[misses[i].ContentHash] = vectors[i];
+                    computed[misses[i].CacheKey] = vectors[i];
                 }
 
                 await CacheAsync(connection, model.Slug, computed, ct);
@@ -189,7 +263,7 @@ public sealed class EmbeddingStore
                     new KeyValuePair<string, object?>(NeadocsTags.Model, model.Slug),
                     new KeyValuePair<string, object?>(NeadocsTags.Reason, ex.GetType().Name));
 
-                await BacklogAsync(connection, model.Slug, misses, ex.Message, ct);
+                await BacklogAsync(connection, model.Slug, misses.ConvertAll(m => m.Pending), ex.Message, ct);
 
                 _logger.LogWarning(ex,
                     "Embedding {Count} chunk(s) for model {Model} failed; the document remains "
@@ -198,27 +272,27 @@ public sealed class EmbeddingStore
             }
         }
 
-        foreach (PendingEmbedding item in pending)
+        foreach (EmbeddingWork item in work)
         {
-            float[]? vector = cached.TryGetValue(item.ContentHash, out float[]? hit)
+            float[]? vector = cached.TryGetValue(item.CacheKey, out float[]? hit)
                 ? hit
-                : computed.GetValueOrDefault(item.ContentHash);
+                : computed.GetValueOrDefault(item.CacheKey);
 
             if (vector is not null)
             {
-                await WriteVectorAsync(connection, model.Slug, item.ChunkId, vector, ct);
+                await WriteVectorAsync(connection, model.Slug, item.Pending.ChunkId, vector, ct);
             }
         }
     }
 
     private async Task<Dictionary<string, float[]>> LoadCachedAsync(
-        NpgsqlConnection connection, string slug, IReadOnlyList<PendingEmbedding> pending, CancellationToken ct)
+        NpgsqlConnection connection, string slug, IReadOnlyList<string> keys, CancellationToken ct)
     {
-        string[] hashes = new string[pending.Count];
+        string[] hashes = new string[keys.Count];
 
-        for (int i = 0; i < pending.Count; i++)
+        for (int i = 0; i < keys.Count; i++)
         {
-            hashes[i] = pending[i].ContentHash;
+            hashes[i] = keys[i];
         }
 
         await using NpgsqlCommand command = _connections.CreateCommand(connection,
@@ -310,7 +384,7 @@ public sealed class EmbeddingStore
     {
         await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
         await using NpgsqlCommand command = _connections.CreateCommand(connection, $"""
-            SELECT b.chunk_id, c.content_hash, c.content
+            SELECT b.chunk_id, c.content, c.normalizer_tag
             FROM {_tables.EmbeddingBacklog} b
             JOIN {_tables.Chunks} c ON c.id = b.chunk_id
             WHERE b.model_slug = @slug
@@ -328,6 +402,9 @@ public sealed class EmbeddingStore
 
         while (await reader.ReadAsync(ct))
         {
+                        // normalizer_tag comes from the chunk row so a retry normalises exactly as the first
+            // attempt would have. Reading raw content and embedding it directly is what made the
+            // retry path disagree with the query path.
             due.Add(new PendingEmbedding(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)));
         }
 

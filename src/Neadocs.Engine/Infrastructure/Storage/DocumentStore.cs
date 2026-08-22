@@ -271,7 +271,7 @@ public sealed class DocumentStore
                 // the cache by content hash and only calls the provider for misses, so unchanged
                 // text costs one query and no API request. It still writes the chunk→vector row,
                 // which is the part that was missing.
-                pending.Add(new PendingEmbedding(match.Id, chunk.ContentHash, chunk.TsvSource));
+                pending.Add(new PendingEmbedding(match.Id, chunk.TsvSource, pipeline.Tag));
 
                 continue;
             }
@@ -279,7 +279,7 @@ public sealed class DocumentStore
             counts.Created++;
             Guid chunkId = await InsertChunkAsync(
                 connection, transaction, documentId, revision, chunk, pipeline, ct);
-            pending.Add(new PendingEmbedding(chunkId, chunk.ContentHash, chunk.TsvSource));
+            pending.Add(new PendingEmbedding(chunkId, chunk.TsvSource, pipeline.Tag));
         }
 
         counts.Deleted = await DeleteStaleChunksAsync(connection, transaction, documentId, keep, ct);
