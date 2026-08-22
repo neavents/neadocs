@@ -19,7 +19,29 @@ public static class TenantResolutionMiddleware
 
     public const string ScopeClaim = "scope";
 
-    public static readonly string[] AnonymousPaths = ["/health", "/ready", "/metrics"];
+    /// <summary>
+    /// Paths served without a tenant or a key, because the caller cannot present one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The kubelet carries no API key. A probe path that answers 401 fails the probe, and a failing
+    /// startup probe kills the pod — so an omission here is not a security decision, it is a
+    /// service that cannot be deployed.
+    /// </para>
+    /// <para>
+    /// <c>/health/live</c> and <c>/health/ready</c> are the names the generated Kubernetes manifests
+    /// probe, matching the rest of the estate; <c>/health</c> and <c>/ready</c> are the older names
+    /// this service has always served and are kept for whatever already points at them. All four
+    /// were needed: adding the endpoints alone left them answering 401 here, which the deployment
+    /// would have experienced as exactly the same 30 failed probes as a 404.
+    /// </para>
+    /// <para>
+    /// Matched exactly, never by prefix. A prefix match on "/health" would silently make anything
+    /// added under that path anonymous later.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] AnonymousPaths =
+        ["/health", "/health/live", "/ready", "/health/ready", "/metrics"];
 
     public static IApplicationBuilder UseNeadocsTenantResolution(this IApplicationBuilder app)
     {

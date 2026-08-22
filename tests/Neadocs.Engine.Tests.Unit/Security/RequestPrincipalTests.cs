@@ -60,14 +60,29 @@ public sealed class RequestPrincipalTests
             .Which.Message.Should().Contain("tenant resolution middleware must run");
     }
 
+    /// <summary>
+    /// The exact set, so widening it is always a deliberate act.
+    /// </summary>
+    /// <remarks>
+    /// Grew from three to five when the Kubernetes probe paths were added. The kubelet presents no
+    /// API key, so a probe path that answers 401 fails the probe and a failing startup probe kills
+    /// the pod — this service served liveness at /health and readiness at /ready while its
+    /// manifest probed /health/live and /health/ready, and adding the endpoints alone was not
+    /// enough because they still 401'd here.
+    ///
+    /// Anything else added to this list should have to argue for itself, which is what this test
+    /// is for.
+    /// </remarks>
     [Fact]
-    public void HealthReadyAndMetricsAreTheOnlyAnonymousPaths() =>
+    public void OnlyTheProbeAndMetricsPathsAreAnonymous() =>
         TenantResolutionMiddleware.AnonymousPaths
-            .Should().BeEquivalentTo(["/health", "/ready", "/metrics"]);
+            .Should().BeEquivalentTo(["/health", "/health/live", "/ready", "/health/ready", "/metrics"]);
 
     [Theory]
     [InlineData("/health", true)]
+    [InlineData("/health/live", true)]
     [InlineData("/ready", true)]
+    [InlineData("/health/ready", true)]
     [InlineData("/metrics", true)]
     [InlineData("/HEALTH", true)]
     [InlineData("/api/v1/collections", false)]

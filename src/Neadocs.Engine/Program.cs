@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -257,12 +258,31 @@ if (engineOptions.EnablePrometheusScrape)
 
 app.MapNeadocs();
 
+// Liveness: is the process alive? It deliberately checks NOTHING.
+//
+// Failing readiness takes a pod out of rotation; failing liveness RESTARTS it. A liveness probe
+// that touches a dependency therefore turns that dependency's outage into a crash loop which
+// outlives it — every service in this estate answers /health/live with a predicate that checks
+// nothing, for exactly this reason.
+//
+// /health is kept as an alias. It is what existed first and what anything already pointed at it
+// expects; the estate convention is the other name, and one vocabulary across ten services is
+// what makes a sweep for "which dependencies gate readiness" find all of them.
 app.MapGet("/health", () => Results.Ok(new StatusResponse("ok")));
+app.MapGet("/health/live", () => Results.Ok(new StatusResponse("ok")));
 
-app.MapGet("/ready", async (
+// Readiness: can this instance serve? Registered at BOTH paths for the same reason.
+//
+// This service served its readiness check at /ready alone while its generated Kubernetes manifest
+// probed /health/ready — a 404. The startup probe would have failed thirty times and the pod been
+// killed, permanently, and the manifest and the service each looked correct on their own.
+app.MapGet("/ready", ReadyAsync);
+app.MapGet("/health/ready", ReadyAsync);
+
+static async Task<IResult> ReadyAsync(
     HttpContext context,
     NpgsqlDataSourceFactory connections,
-    MigrationState migrationState) =>
+    MigrationState migrationState)
 {
     if (!migrationState.Completed)
     {
@@ -282,7 +302,7 @@ app.MapGet("/ready", async (
             StatusCodes.Status503ServiceUnavailable,
             "Not Ready",
             "Postgres did not answer.");
-});
+}
 
 try
 {
