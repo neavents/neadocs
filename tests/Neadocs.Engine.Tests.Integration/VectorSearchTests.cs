@@ -20,7 +20,7 @@ public sealed class VectorTestHost : WebApplicationFactory<Program>, IAsyncLifet
 
     public VectorTestHost()
     {
-        Schema = "neadocs_vec_" + Guid.NewGuid().ToString("N")[..10];
+        Schema = TestSchema.Name("neadocs_vec_");
         ConnectionString = Environment.GetEnvironmentVariable("NEADOCS_TEST_POSTGRES")
             ?? "Host=127.0.0.1;Port=5432;Database=neavents;Username=neavents;Password=neavents_dev";
 
@@ -62,11 +62,12 @@ public sealed class VectorTestHost : WebApplicationFactory<Program>, IAsyncLifet
         return client;
     }
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        using HttpClient warmUp = CreateClient();
+        // Debris from runs that never reached disposal. See TestSchema.
+        await TestSchema.SweepStaleAsync(ConnectionString);
 
-        return Task.CompletedTask;
+        using HttpClient warmUp = CreateClient();
     }
 
     public async Task<T?> ScalarAsync<T>(string sql)

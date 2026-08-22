@@ -63,13 +63,16 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
     private const string ConnectionFallback =
         "Host=127.0.0.1;Port=5432;Database=neavents;Username=neavents;Password=neavents_dev";
 
-    private readonly string _schema = "neadocs_guard_" + Guid.NewGuid().ToString("N")[..10];
+    private readonly string _schema = TestSchema.Name("neadocs_guard_");
     private readonly List<NpgsqlDataSourceFactory> _factories = [];
 
     private static string ConnectionString =>
         Environment.GetEnvironmentVariable("NEADOCS_TEST_POSTGRES") ?? ConnectionFallback;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    // Debris from runs that never reached DisposeAsync — cancelled, timed out, or killed —
+    // outlives any teardown this class can write, so the next run is what clears it.
+    public Task InitializeAsync() =>
+        TestSchema.SweepStaleAsync(ConnectionString);
 
     public async Task DisposeAsync()
     {

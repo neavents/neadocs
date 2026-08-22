@@ -26,7 +26,7 @@ public sealed class NeadocsTestHost : WebApplicationFactory<Program>, IAsyncLife
 
     public NeadocsTestHost()
     {
-        Schema = SchemaPrefix + Guid.NewGuid().ToString("N")[..12];
+        Schema = TestSchema.Name(SchemaPrefix);
         ConnectionString = ResolveConnectionString();
 
         if (Schema == ProductionSchema || !Schema.StartsWith(SchemaPrefix, StringComparison.Ordinal))
@@ -70,11 +70,15 @@ public sealed class NeadocsTestHost : WebApplicationFactory<Program>, IAsyncLife
 
     public string ConnectionString { get; }
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        using HttpClient warmUp = CreateClient();
+        // Before anything else: clear out schemas that earlier runs left behind. Disposal already
+        // drops this run's own, and thirty-three had still accumulated — a run that is cancelled,
+        // times out or crashes never reaches its teardown, so the cleanup has to happen on the way
+        // in as well as on the way out. See TestSchema for what the debris cost.
+        await TestSchema.SweepStaleAsync(ConnectionString);
 
-        return Task.CompletedTask;
+        using HttpClient warmUp = CreateClient();
     }
 
     public HttpClient AnonymousClient() => CreateClient();
