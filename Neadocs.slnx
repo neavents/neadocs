@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Neadocs.Engine/Neadocs.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Neadocs.Engine.Tests.Integration/Neadocs.Engine.Tests.Integration.csproj" />
+    <Project Path="tests/Neadocs.Engine.Tests.Unit/Neadocs.Engine.Tests.Unit.csproj" />
+  </Folder>
+</Solution>

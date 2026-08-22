@@ -1,0 +1,115 @@
+{
+  "tag": "he",
+  "description": "Hebrew. Strip niqqud and cantillation, normalise the five final forms, map geresh and gershayim to ASCII. Postgres has no Hebrew configuration, so `simple` stands and this list is the only filtering there is.",
+  "stemPrefixLength": 0,
+  "pipeline": [
+    {
+      "op": "mapChars",
+      "map": {
+        "‎": "",
+        "‏": "",
+        "‪": "",
+        "‫": "",
+        "‬": "",
+        "‭": "",
+        "‮": "",
+        "⁦": "",
+        "⁧": "",
+        "⁨": "",
+        "⁩": "",
+        "‌": "",
+        "‍": ""
+      }
+    },
+    {
+      "op": "stripUnicodeCategory",
+      "categories": [
+        "NonSpacingMark"
+      ]
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "ך": "כ",
+        "ם": "מ",
+        "ן": "נ",
+        "ף": "פ",
+        "ץ": "צ",
+        "׳": "'",
+        "״": "\""
+      }
+    },
+    {
+      "_comment": "Function words, folded by the four rules above so they can actually match. Postgres ships no stopword file for this language — the config either has none (arabic_stem) or does not exist — and websearch_to_tsquery joins its terms with AND, so every one of these would otherwise be a word the document is REQUIRED to contain. stemPrefixLength stays 0 on purpose: this script builds words from a root by infixing rather than only suffixing, and it attaches single-letter proclitics, so a fixed-length prefix groups unrelated words instead of relating inflections. Set one only with a corpus and a golden set to measure it against.",
+      "op": "dropTokens",
+      "tokens": [
+        "של",
+        "את",
+        "על",
+        "עמ",
+        "אל",
+        "מנ",
+        "כי",
+        "אמ",
+        "או",
+        "גמ",
+        "רק",
+        "לא",
+        "כנ",
+        "זה",
+        "זו",
+        "אלה",
+        "הוא",
+        "היא",
+        "המ",
+        "הנ",
+        "אני",
+        "אתה",
+        "אנחנו",
+        "מה",
+        "מי",
+        "איכ",
+        "למה",
+        "איפה",
+        "כאשר",
+        "אבל",
+        "אז",
+        "יש",
+        "אינ",
+        "כל",
+        "בינ",
+        "אחרי",
+        "לפני"
+      ]
+    },
+    {
+      "op": "collapseWhitespace"
+    }
+  ],
+  "selfTest": [
+    {
+      "in": "שָׁלוֹם",
+      "out": "שלומ"
+    },
+    {
+      "in": "מלך",
+      "out": "מלכ"
+    },
+    {
+      "in": "ארץ",
+      "out": "ארצ"
+    },
+    {
+      "in": "צה״ל",
+      "out": "צה\"ל"
+    },
+    {
+      "in": "של",
+      "out": ""
+    },
+    {
+      "in": "של סיסמה",
+      "out": "סיסמה"
+    }
+  ]
+}

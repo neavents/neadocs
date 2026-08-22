@@ -1,0 +1,157 @@
+{
+  "tag": "ar",
+  "description": "Arabic. Unify alef, yeh, kaf and teh marbuta; drop harakat, tatweel and bidi controls; ASCII digits. Snowball stemming, which strips the definite article and possessive suffixes properly — no truncation needed. Stopwords are supplied here because Postgres ships an arabic stemmer with no stopword dictionary at all.",
+  "searchConfig": "arabic",
+  "stemPrefixLength": 0,
+  "pipeline": [
+    {
+      "op": "mapChars",
+      "map": {
+        "‎": "",
+        "‏": "",
+        "‪": "",
+        "‫": "",
+        "‬": "",
+        "‭": "",
+        "‮": "",
+        "⁦": "",
+        "⁧": "",
+        "⁨": "",
+        "⁩": "",
+        "ـ": "",
+        "‌": "",
+        "‍": ""
+      }
+    },
+    {
+      "op": "stripUnicodeCategory",
+      "categories": [
+        "NonSpacingMark"
+      ]
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ی": "ي",
+        "ئ": "ي",
+        "ؤ": "و",
+        "ة": "ه",
+        "ک": "ك",
+        "٠": "0",
+        "۰": "0",
+        "١": "1",
+        "۱": "1",
+        "٢": "2",
+        "۲": "2",
+        "٣": "3",
+        "۳": "3",
+        "٤": "4",
+        "۴": "4",
+        "٥": "5",
+        "۵": "5",
+        "٦": "6",
+        "۶": "6",
+        "٧": "7",
+        "۷": "7",
+        "٨": "8",
+        "۸": "8",
+        "٩": "9",
+        "۹": "9"
+      }
+    },
+    {
+      "_comment": "Function words, folded by the four rules above so they can actually match. Postgres ships no stopword file for this language — the config either has none (arabic_stem) or does not exist — and websearch_to_tsquery joins its terms with AND, so every one of these would otherwise be a word the document is REQUIRED to contain. stemPrefixLength stays 0 on purpose: this script builds words from a root by infixing rather than only suffixing, and it attaches single-letter proclitics, so a fixed-length prefix groups unrelated words instead of relating inflections. Set one only with a corpus and a golden set to measure it against.",
+      "op": "dropTokens",
+      "tokens": [
+        "في",
+        "من",
+        "علي",
+        "الي",
+        "عن",
+        "مع",
+        "هذا",
+        "هذه",
+        "ذلك",
+        "تلك",
+        "التي",
+        "الذي",
+        "الذين",
+        "ما",
+        "لا",
+        "لم",
+        "لن",
+        "قد",
+        "كان",
+        "كانت",
+        "هو",
+        "هي",
+        "هم",
+        "هن",
+        "ان",
+        "او",
+        "ثم",
+        "بل",
+        "حتي",
+        "اذا",
+        "كل",
+        "بعض",
+        "غير",
+        "بين",
+        "عند",
+        "لدي",
+        "اي",
+        "كما",
+        "مثل",
+        "هنا",
+        "هناك",
+        "كيف",
+        "متي",
+        "اين",
+        "لماذا",
+        "نعم"
+      ]
+    },
+    {
+      "op": "collapseWhitespace"
+    }
+  ],
+  "selfTest": [
+    {
+      "in": "أحمد",
+      "out": "احمد"
+    },
+    {
+      "in": "مَدْرَسَة",
+      "out": "مدرسه"
+    },
+    {
+      "in": "کتاب",
+      "out": "كتاب"
+    },
+    {
+      "in": "الــقـائـمة",
+      "out": "القايمه"
+    },
+    {
+      "in": "٢٠٢٦",
+      "out": "2026"
+    },
+    {
+      "in": "‏مرحبا‎",
+      "out": "مرحبا"
+    },
+    {
+      "in": "في",
+      "out": ""
+    },
+    {
+      "in": "في كلمة المرور",
+      "out": "كلمه المرور"
+    }
+  ]
+}

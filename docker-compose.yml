@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: neadocs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neadocs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neadocs_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-neadocs}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - neadocs_postgres_data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-neadocs.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neadocs} -d ${POSTGRES_DB:-neadocs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neadocs:
+    build:
+      context: .
+    container_name: neadocs-engine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${NEADOCS_PORT:-5700}:5700"
+    environment:
+      DocumentEngine__PostgresConnectionString: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-neadocs};Username=${POSTGRES_USER:-neadocs};Password=${POSTGRES_PASSWORD:-neadocs_dev}
+      DocumentEngine__Schema: ${NEADOCS_SCHEMA:-neadocs}
+      DocumentEngine__AllowedProjectKeys: ${NEADOCS_PROJECT_KEYS:-default:change-me-before-you-expose-this}
+      DocumentEngine__Text__Locales__0: ${NEADOCS_LOCALE:-en}
+      DocumentEngine__Text__DefaultLocale: ${NEADOCS_LOCALE:-en}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+    healthcheck:
+      test: ["CMD", "./Neadocs.Engine", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  neadocs_postgres_data:

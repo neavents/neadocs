@@ -1,0 +1,163 @@
+{
+  "tag": "en",
+  "description": "English. The fallback's folding, kept verbatim so a loanword still matches undiacriticised, plus the snowball dictionary — which is what supplies the stopwords the fallback's 'simple' configuration has none of.",
+  "searchConfig": "english",
+  "pipeline": [
+    {
+      "op": "lowercase",
+      "mode": "invariant"
+    },
+    {
+      "op": "stripUnicodeCategory",
+      "categories": [
+        "NonSpacingMark"
+      ]
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "ß": "ss",
+        "æ": "ae",
+        "œ": "oe",
+        "þ": "th",
+        "ð": "d",
+        "ĳ": "ij",
+        "ŋ": "n"
+      }
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "à": "a",
+        "á": "a",
+        "â": "a",
+        "ã": "a",
+        "ä": "a",
+        "å": "a",
+        "ā": "a",
+        "ă": "a",
+        "ą": "a",
+        "è": "e",
+        "é": "e",
+        "ê": "e",
+        "ë": "e",
+        "ē": "e",
+        "ĕ": "e",
+        "ė": "e",
+        "ę": "e",
+        "ě": "e",
+        "ì": "i",
+        "í": "i",
+        "î": "i",
+        "ï": "i",
+        "ĩ": "i",
+        "ī": "i",
+        "ĭ": "i",
+        "į": "i",
+        "ı": "i",
+        "ò": "o",
+        "ó": "o",
+        "ô": "o",
+        "õ": "o",
+        "ö": "o",
+        "ø": "o",
+        "ō": "o",
+        "ŏ": "o",
+        "ő": "o",
+        "ù": "u",
+        "ú": "u",
+        "û": "u",
+        "ü": "u",
+        "ũ": "u",
+        "ū": "u",
+        "ŭ": "u",
+        "ů": "u",
+        "ű": "u",
+        "ų": "u",
+        "ç": "c",
+        "ć": "c",
+        "ĉ": "c",
+        "ċ": "c",
+        "č": "c",
+        "ñ": "n",
+        "ń": "n",
+        "ņ": "n",
+        "ň": "n",
+        "ŉ": "n",
+        "ś": "s",
+        "ŝ": "s",
+        "ş": "s",
+        "š": "s",
+        "ź": "z",
+        "ż": "z",
+        "ž": "z",
+        "ý": "y",
+        "ÿ": "y",
+        "ŷ": "y",
+        "ĝ": "g",
+        "ğ": "g",
+        "ġ": "g",
+        "ģ": "g",
+        "ł": "l",
+        "ĺ": "l",
+        "ļ": "l",
+        "ľ": "l",
+        "ŀ": "l",
+        "ŕ": "r",
+        "ŗ": "r",
+        "ř": "r",
+        "ţ": "t",
+        "ť": "t",
+        "ŧ": "t",
+        "ď": "d",
+        "đ": "d",
+        "ĥ": "h",
+        "ħ": "h",
+        "ĵ": "j",
+        "ķ": "k",
+        "ŵ": "w"
+      }
+    },
+    {
+      "op": "collapseWhitespace"
+    }
+  ],
+  "selfTest": [
+    {
+      "in": "Café",
+      "out": "cafe"
+    },
+    {
+      "in": "Straße",
+      "out": "strasse"
+    },
+    {
+      "in": "ÉCOLE",
+      "out": "ecole"
+    },
+    {
+      "in": "Привет",
+      "out": "привет"
+    },
+    {
+      "in": "ΑΘΗΝΑ",
+      "out": "αθηνα"
+    },
+    {
+      "in": "Café",
+      "out": "cafe"
+    },
+    {
+      "in": "  spaced   out  ",
+      "out": "spaced out"
+    },
+    {
+      "in": "Publishing",
+      "out": "publishing"
+    },
+    {
+      "in": "HOW DO I PUBLISH",
+      "out": "how do i publish"
+    }
+  ]
+}

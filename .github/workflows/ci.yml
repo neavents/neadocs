@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet build -c Release
+      - run: dotnet test tests/Neadocs.Engine.Tests.Unit -c Release --no-build
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neadocs
+          POSTGRES_PASSWORD: neadocs_dev
+          POSTGRES_DB: neadocs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U neadocs"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NEADOCS_TEST_POSTGRES: "Host=127.0.0.1;Port=5432;Database=neadocs;Username=neadocs;Password=neadocs_dev"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Integration suite with no embedding model configured
+        run: dotnet test tests/Neadocs.Engine.Tests.Integration -c Release
+
+  aot:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Publish Native AOT
+        run: dotnet publish src/Neadocs.Engine -c Release -r ${{ matrix.rid }} -o out
+      - name: The binary must boot and refuse a bad configuration by name
+        run: |
+          set +e
+          DocumentEngine__Schema="Not A Schema" \
+          DocumentEngine__AllowedProjectKeys="a:b" \
+          DocumentEngine__Text__Locales__0=en \
+          DocumentEngine__Text__DefaultLocale=en \
+          ./out/Neadocs.Engine > boot.log 2>&1
+          code=$?
+          set -e
+          grep -q "DocumentEngine:Schema" boot.log || { echo "boot did not name the setting"; cat boot.log; exit 1; }
+          [ "$code" -ne 0 ] || { echo "an invalid configuration must exit non-zero"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neadocs-${{ matrix.rid }}
+          path: out/Neadocs.Engine
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose up with no keys anywhere
+        run: |
+          NEADOCS_PROJECT_KEYS="ci:ci-key" docker compose up -d --build
+          for i in $(seq 1 60); do
+            curl -sf localhost:5700/ready > /dev/null && break
+            sleep 2
+          done
+      - run: NEADOCS_SMOKE_KEY=ci-key ./scripts/smoke.sh http://localhost:5700
+      - if: always()
+        run: docker compose logs neadocs --tail 100
+      - if: always()
+        run: docker compose down -v

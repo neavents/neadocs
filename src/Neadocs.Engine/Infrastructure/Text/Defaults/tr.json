@@ -1,0 +1,99 @@
+{
+  "tag": "tr",
+  "description": "Turkish. Dotted and dotless i resolved before casing, then folded to ASCII because people type without diacritics. Snowball stemming plus a 4-character truncation, because Turkish suffixes stack further than any stemmer follows.",
+  "searchConfig": "turkish",
+  "stemPrefixLength": 4,
+  "pipeline": [
+    {
+      "op": "mapChars",
+      "map": {
+        "I": "ı",
+        "İ": "i"
+      }
+    },
+    {
+      "op": "lowercase",
+      "mode": "ascii"
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "Ş": "ş",
+        "Ğ": "ğ",
+        "Ü": "ü",
+        "Ö": "ö",
+        "Ç": "ç",
+        "Â": "â",
+        "Î": "î",
+        "Û": "û"
+      }
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "ı": "i",
+        "ş": "s",
+        "ğ": "g",
+        "ü": "u",
+        "ö": "o",
+        "ç": "c",
+        "â": "a",
+        "î": "i",
+        "û": "u"
+      }
+    },
+    {
+      "_comment": "Postgres' own turkish.stop, folded by the four rules above. It has to be folded to be reachable at all: the shipped list holds 'nasıl', 'için' and 'çünkü', and the text reaching the dictionary says 'nasil', 'icin' and 'cunku'. Since websearch_to_tsquery ANDs its terms, every unreachable stopword became a word the document was required to contain — which is why a question phrased naturally found only documents phrased the same way.",
+      "op": "dropTokens",
+      "tokens": [
+        "acaba", "ama", "aslinda", "az", "bazi", "belki", "biri", "birkac", "birsey", "biz",
+        "bu", "cok", "cunku", "da", "daha", "de", "defa", "diye", "eger", "en",
+        "gibi", "hem", "hep", "hepsi", "her", "hic", "icin", "ile", "ise", "kez",
+        "ki", "kim", "mi", "mu", "nasil", "ne", "neden", "nerde", "nerede", "nereye",
+        "nicin", "niye", "o", "sanki", "sey", "siz", "su", "tum", "ve", "veya",
+        "ya", "yani"
+      ]
+    },
+    {
+      "op": "collapseWhitespace"
+    }
+  ],
+  "selfTest": [
+    {
+      "in": "IST",
+      "out": "ist"
+    },
+    {
+      "in": "İSTANBUL",
+      "out": "istanbul"
+    },
+    {
+      "in": "ŞİFRE",
+      "out": "sifre"
+    },
+    {
+      "in": "Menü",
+      "out": "menu"
+    },
+    {
+      "in": "AĞAÇ",
+      "out": "agac"
+    },
+    {
+      "in": "sifre",
+      "out": "sifre"
+    },
+    {
+      "in": "Menümü nasıl yayınlarım",
+      "out": "menumu yayinlarim"
+    },
+    {
+      "in": "QR kodum çalışmıyor",
+      "out": "qr kodum calismiyor"
+    },
+    {
+      "in": "ne için",
+      "out": ""
+    }
+  ]
+}

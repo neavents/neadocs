@@ -1,0 +1,240 @@
+{
+  "collection": "neavents-help",
+  "locale": "tr",
+  "cases": [
+    {
+      "query": "menümü nasıl yayınlarım",
+      "expect": [
+        "publishing-a-menu"
+      ],
+      "maxRank": 2
+    },
+    {
+      "query": "menuyu yayinlama",
+      "expect": [
+        "publishing-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "qr kod çalışmıyor",
+      "expect": [
+        "qr-troubleshooting"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "sifremi unuttum",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "masa ekleme",
+      "expect": [
+        "adding-tables"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "menümü",
+      "expect": [
+        "publishing-a-menu",
+        "creating-a-menu"
+      ],
+      "maxRank": 2
+    },
+    {
+      "query": "masalarımı nasıl eklerim",
+      "expect": [
+        "adding-tables"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "qr kodum çalışmıyor",
+      "expect": [
+        "qr-troubleshooting"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "menülerimi yayınlamak istiyorum",
+      "expect": [
+        "publishing-a-menu"
+      ],
+      "maxRank": 3
+    },
+    {
+      "query": "şifremi unuttum",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "ekip üyesi davet etmek",
+      "expect": [
+        "inviting-team-members"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "kart eklemek istiyorum",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 2
+    },
+    {
+      "query": "faturalarım nerede",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "saat dilimi",
+      "expect": [
+        "venue-profile"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "yeni başlıyorum",
+      "expect": [
+        "getting-started"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "fiyatları nasıl güncellerim",
+      "expect": [
+        "pricing-rules",
+        "creating-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "bölüm ekleme",
+      "expect": [
+        "menu-sections",
+        "creating-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "parolamı unuttum",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "kare kod",
+      "expect": [
+        "qr-troubleshooting"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "makbuz",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 2
+    },
+    {
+      "query": "happy hour indirimi",
+      "expect": [
+        "pricing-rules"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "porsiyon ekleme",
+      "expect": [
+        "portions-and-options"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "ürün fotoğrafı yükleme",
+      "expect": [
+        "adding-photos"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "menüyü ingilizceye çevirme",
+      "expect": [
+        "translating-your-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "hangi ürünler açılıyor",
+      "expect": [
+        "menu-analytics"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "yerleşim planı",
+      "expect": [
+        "floorplan-editor"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "başka şubeye menü kopyalama",
+      "expect": [
+        "copying-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "ekip üyesinin yetkisi",
+      "expect": [
+        "roles-and-permissions"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "kartımı değiştirmek istiyorum",
+      "expect": [
+        "payment-methods"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "referans ürün nedir",
+      "expect": [
+        "reference-items"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "qr kod tasarımı",
+      "expect": [
+        "qr-designs"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "bildirim ayarları",
+      "expect": [
+        "notification-settings"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "menü saatleri ayarlama",
+      "expect": [
+        "scheduling-menus"
+      ],
+      "maxRank": 2
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "collection": "neavents-help",
+  "locale": "en",
+  "cases": [
+    {
+      "query": "how do I publish my menu",
+      "expect": [
+        "publishing-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "qr code not working",
+      "expect": [
+        "qr-troubleshooting"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "forgot my password",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "adding a table",
+      "expect": [
+        "adding-tables"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "publish my menu",
+      "expect": [
+        "publishing-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "reset email not arriving",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "invite a team member",
+      "expect": [
+        "inviting-team-members"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "change my plan",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "where are my invoices",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "opening hours",
+      "expect": [
+        "venue-profile"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "print qr codes",
+      "expect": [
+        "printing-qr-codes",
+        "qr-troubleshooting"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "add a section to a menu",
+      "expect": [
+        "creating-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "just getting started",
+      "expect": [
+        "first-week-checklist",
+        "getting-started"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "passcode reset",
+      "expect": [
+        "password-reset"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "receipt",
+      "expect": [
+        "plan-and-billing"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "happy hour discount",
+      "expect": [
+        "pricing-rules"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "add a portion size",
+      "expect": [
+        "portions-and-options"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "upload a dish photo",
+      "expect": [
+        "adding-photos"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "translate my menu",
+      "expect": [
+        "translating-your-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "which items get opened",
+      "expect": [
+        "menu-analytics"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "floorplan",
+      "expect": [
+        "floorplan-editor"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "copy a menu to another venue",
+      "expect": [
+        "copying-a-menu"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "team member permissions",
+      "expect": [
+        "roles-and-permissions"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "change my card",
+      "expect": [
+        "payment-methods"
+      ],
+      "maxRank": 2
+    },
+    {
+      "query": "what is a reference item",
+      "expect": [
+        "reference-items"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "qr code design",
+      "expect": [
+        "qr-designs"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "notification settings",
+      "expect": [
+        "notification-settings"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "menu schedule times",
+      "expect": [
+        "scheduling-menus"
+      ],
+      "maxRank": 1
+    },
+    {
+      "query": "how many menus can I have",
+      "expect": [
+        "usage-and-limits",
+        "multiple-venues"
+      ],
+      "maxRank": 1
+    }
+  ]
+}

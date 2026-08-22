@@ -1,0 +1,140 @@
+{
+  "tag": "fa",
+  "description": "Persian. Like Arabic, but ZWNJ becomes a space because it joins morphemes — which also turns clitics like mi- and -ha into standalone tokens, so the stopword list can reach them. Postgres has no Persian configuration, so `simple` stands and this list is the only filtering there is.",
+  "stemPrefixLength": 0,
+  "pipeline": [
+    {
+      "op": "mapChars",
+      "map": {
+        "‎": "",
+        "‏": "",
+        "‪": "",
+        "‫": "",
+        "‬": "",
+        "‭": "",
+        "‮": "",
+        "⁦": "",
+        "⁧": "",
+        "⁨": "",
+        "⁩": "",
+        "ـ": "",
+        "‌": " ",
+        "‍": ""
+      }
+    },
+    {
+      "op": "stripUnicodeCategory",
+      "categories": [
+        "NonSpacingMark"
+      ]
+    },
+    {
+      "op": "mapChars",
+      "map": {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ة": "ه",
+        "ي": "ی",
+        "ك": "ک",
+        "٠": "0",
+        "۰": "0",
+        "١": "1",
+        "۱": "1",
+        "٢": "2",
+        "۲": "2",
+        "٣": "3",
+        "۳": "3",
+        "٤": "4",
+        "۴": "4",
+        "٥": "5",
+        "۵": "5",
+        "٦": "6",
+        "۶": "6",
+        "٧": "7",
+        "۷": "7",
+        "٨": "8",
+        "۸": "8",
+        "٩": "9",
+        "۹": "9"
+      }
+    },
+    {
+      "_comment": "Function words, folded by the four rules above so they can actually match. Postgres ships no stopword file for this language — the config either has none (arabic_stem) or does not exist — and websearch_to_tsquery joins its terms with AND, so every one of these would otherwise be a word the document is REQUIRED to contain. stemPrefixLength stays 0 on purpose: this script builds words from a root by infixing rather than only suffixing, and it attaches single-letter proclitics, so a fixed-length prefix groups unrelated words instead of relating inflections. Set one only with a corpus and a golden set to measure it against.",
+      "op": "dropTokens",
+      "tokens": [
+        "و",
+        "در",
+        "به",
+        "از",
+        "که",
+        "این",
+        "ان",
+        "را",
+        "با",
+        "برای",
+        "تا",
+        "هم",
+        "یا",
+        "اما",
+        "اگر",
+        "چون",
+        "هر",
+        "است",
+        "بود",
+        "شد",
+        "می",
+        "نمی",
+        "بر",
+        "بی",
+        "هیچ",
+        "چه",
+        "چرا",
+        "کجا",
+        "چگونه",
+        "من",
+        "تو",
+        "او",
+        "ما",
+        "شما",
+        "انها",
+        "ها",
+        "ای"
+      ]
+    },
+    {
+      "op": "collapseWhitespace"
+    }
+  ],
+  "selfTest": [
+    {
+      "in": "می‌رود",
+      "out": "رود"
+    },
+    {
+      "in": "كتاب",
+      "out": "کتاب"
+    },
+    {
+      "in": "مَدرسه",
+      "out": "مدرسه"
+    },
+    {
+      "in": "۱۴۰۵",
+      "out": "1405"
+    },
+    {
+      "in": "الــقائمة",
+      "out": "القائمه"
+    },
+    {
+      "in": "در",
+      "out": ""
+    },
+    {
+      "in": "در رمز عبور",
+      "out": "رمز عبور"
+    }
+  ]
+}

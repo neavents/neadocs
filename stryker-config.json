@@ -1,0 +1,24 @@
+{
+  "stryker-config": {
+    "project": "Neadocs.Engine.csproj",
+    "test-projects": [
+      "tests/Neadocs.Engine.Tests.Unit/Neadocs.Engine.Tests.Unit.csproj"
+    ],
+    "mutate": [
+      "Infrastructure/Text/**/*.cs",
+      "Infrastructure/Retrieval/RrfFuser.cs",
+      "Infrastructure/Chunking/**/*.cs",
+      "Infrastructure/Configuration/**/*.cs"
+    ],
+    "reporters": [
+      "progress",
+      "json"
+    ],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 50
+    },
+    "concurrency": 4
+  }
+}
