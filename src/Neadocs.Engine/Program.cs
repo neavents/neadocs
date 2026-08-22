@@ -296,6 +296,33 @@ try
         string.Join(", ", normalizers.Tags),
         TextRuntime.SupportsNormalization ? "available" : "unavailable (folding is explicit)");
 
+    // Jobs abandoned by a process that was killed rather than stopped. A job is advanced by the
+    // process running it, so an OOM or an eviction leaves its row saying "running" with nothing
+    // that would ever move it — terminal in practice, and indistinguishable from a job still
+    // working. Graceful shutdown marks its own job failed; this is the backstop for the rest.
+    //
+    // Two hours, because with more than one replica a job abandoned by a dead pod cannot be told
+    // apart from one another pod is actively running. Progress is written every 25 documents, so a
+    // live job keeps its row fresh and this window cannot reach it.
+    try
+    {
+        int recovered = await app.Services.GetRequiredService<JobStore>()
+            .FailStaleAsync(TimeSpan.FromHours(2), CancellationToken.None);
+
+        if (recovered > 0)
+        {
+            Log.Warning(
+                "Failed {Count} job(s) abandoned by a previous process. They did not finish and can be run again.",
+                recovered);
+        }
+    }
+    catch (Exception ex)
+    {
+        // Never block startup on housekeeping. A stuck job row is a nuisance; a service that
+        // will not boot because it could not tidy one is an outage.
+        Log.Warning(ex, "Could not reconcile abandoned jobs at startup.");
+    }
+
     app.Run();
 }
 catch (Exception ex)

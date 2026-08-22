@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
@@ -23,17 +24,21 @@ public sealed class ReindexService
 
     private static readonly ConcurrentDictionary<Guid, byte> Running = new();
 
+    private readonly IHostApplicationLifetime _lifetime;
+
     public ReindexService(
         NpgsqlDataSourceFactory connections,
         SchemaTables tables,
         DocumentStore store,
         JobStore jobs,
+        IHostApplicationLifetime lifetime,
         ILogger<ReindexService> logger)
     {
         _connections = connections;
         _tables = tables;
         _store = store;
         _jobs = jobs;
+        _lifetime = lifetime;
         _logger = logger;
     }
 
@@ -55,20 +60,29 @@ public sealed class ReindexService
 
         Running.TryAdd(jobId, 0);
 
-        _ = Task.Run(() => RunAsync(jobId, tenant, collectionKey, collectionId.Value, locale), CancellationToken.None);
+        // Tied to the host's shutdown, not detached from it. A reindex rebuilds and re-embeds
+        // every document in a collection, so it runs for a long time — and it is exactly what
+        // someone runs after editing a normalisation rule, which is exactly when a deploy might
+        // also be rolling. Started with CancellationToken.None it kept going into a terminating
+        // process, was killed mid-document, and left its job row saying "running" with nothing
+        // anywhere that would ever move it. A caller polling that id waits forever.
+        _ = Task.Run(
+            () => RunAsync(jobId, tenant, collectionKey, collectionId.Value, locale, _lifetime.ApplicationStopping),
+            CancellationToken.None);
 
         return jobId;
     }
 
     public async Task RunAsync(
-        Guid jobId, string tenant, string collectionKey, Guid collectionId, string? locale)
+        Guid jobId, string tenant, string collectionKey, Guid collectionId, string? locale,
+        CancellationToken ct = default)
     {
         List<string> errors = [];
         int processed = 0;
 
         try
         {
-            List<ReindexDocument> documents = await LoadAsync(collectionId, locale, CancellationToken.None);
+            List<ReindexDocument> documents = await LoadAsync(collectionId, locale, ct);
 
             await _jobs.StartAsync(jobId, documents.Count, CancellationToken.None);
 
@@ -78,6 +92,11 @@ public sealed class ReindexService
 
             foreach (ReindexDocument document in documents)
             {
+                // Between documents, not inside one. A document's rebuild is transactional, so
+                // stopping between them leaves the collection consistent — partly rebuilt, which
+                // the next reindex finishes — rather than a document half-chunked.
+                ct.ThrowIfCancellationRequested();
+
                 try
                 {
                     await _store.UpsertDocumentAsync(
@@ -97,6 +116,18 @@ public sealed class ReindexService
                     await _jobs.ProgressAsync(jobId, processed, CancellationToken.None);
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Recorded as a real outcome rather than left dangling. "Stopped after 240 of 900"
+            // tells an operator to run it again; a row that still says "running" tells them
+            // nothing and never changes.
+            errors.Add(
+                $"The engine shut down after {processed} document(s); the reindex did not finish. Run it again.");
+
+            _logger.LogWarning(
+                "Reindex job {JobId} stopped at {Processed} document(s) because the host is shutting down.",
+                jobId, processed);
         }
         catch (Exception ex)
         {

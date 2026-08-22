@@ -30,6 +30,47 @@ public sealed class JobStore
         _tables = tables;
     }
 
+    /// <summary>
+    /// Fails jobs left mid-flight by a process that died, and reports how many.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A job is advanced by the process running it, so a process that is killed — OOM, a node
+    /// eviction, SIGKILL after the grace period — leaves its row saying <c>running</c> with nothing
+    /// anywhere that would ever move it. It is terminal in practice: a caller polling that id waits
+    /// forever, and a reindex that never finished looks exactly like one still working.
+    /// </para>
+    /// <para>
+    /// Graceful shutdown is handled where the work runs, which marks its own job failed. This is
+    /// the backstop for the ungraceful case, and it is deliberately blunt: with more than one
+    /// replica there is no way to tell a job abandoned by a dead pod from one another pod is
+    /// actively running, so it only touches rows that have not been updated for
+    /// <paramref name="staleAfter"/>. Progress is written every 25 documents, so a live job keeps
+    /// its row fresh and a generous window cannot catch one.
+    /// </para>
+    /// </remarks>
+    public async Task<int> FailStaleAsync(TimeSpan staleAfter, CancellationToken ct)
+    {
+        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlCommand command = _connections.CreateCommand(connection, $"""
+            UPDATE {_tables.Jobs}
+            SET state = @failed,
+                errors = COALESCE(errors, '[]'::jsonb) || @reason::jsonb,
+                updated_at = now()
+            WHERE state IN (@queued, @running)
+              AND updated_at < now() - make_interval(secs => @staleSeconds)
+            """);
+
+        command.Parameters.AddWithValue("failed", JobStates.Failed);
+        command.Parameters.AddWithValue("queued", JobStates.Queued);
+        command.Parameters.AddWithValue("running", JobStates.Running);
+        command.Parameters.AddWithValue("staleSeconds", staleAfter.TotalSeconds);
+        command.Parameters.AddWithValue("reason",
+            """["The engine stopped before this job finished. Run it again."]""");
+
+        return await command.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task<Guid> CreateAsync(string tenant, string kind, CancellationToken ct)
     {
         Guid id = Guid.NewGuid();
