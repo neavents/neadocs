@@ -81,7 +81,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: neadocs-secrets
-                  key: postgres
+                  key: postgresDirect
                   optional: true
             - name: DocumentEngine__AllowedProjectKeys
               valueFrom:
