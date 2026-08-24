@@ -41,7 +41,7 @@ public sealed class ChunkDetailReader
             return details;
         }
 
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
         await using NpgsqlCommand command = _connections.CreateCommand(connection, $"""
             SELECT c.id, c.document_id, d.external_key, d.locale, d.title,
                    c.heading_path::text, d.metadata::text, c.ordinal, c.content

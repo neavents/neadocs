@@ -47,7 +47,7 @@ public sealed class SearchService
     public async Task<SearchResponse?> SearchAsync(
         string tenant, string collectionKey, SearchRequest request, string mode, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         Guid? collectionId = await _store.ResolveCollectionAsync(connection, null, tenant, collectionKey, ct);
 

@@ -83,6 +83,12 @@ spec:
                   name: neadocs-secrets
                   key: postgresDirect
                   optional: true
+            - name: DocumentEngine__PostgresReadConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: neadocs-secrets
+                  key: postgresRead
+                  optional: true
             - name: DocumentEngine__AllowedProjectKeys
               valueFrom:
                 secretKeyRef:

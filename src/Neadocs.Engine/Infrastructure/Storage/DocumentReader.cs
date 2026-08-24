@@ -62,7 +62,7 @@ public sealed class DocumentReader
         string tenant, string collectionKey, string? locale, string? staleAgainst,
         string? cursor, int limit, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         Guid? collectionId = await _store.ResolveCollectionAsync(connection, null, tenant, collectionKey, ct);
 
@@ -129,7 +129,7 @@ public sealed class DocumentReader
     public async Task<(DocumentResponse? Document, int Matches)> GetAsync(
         string tenant, string collectionKey, string externalKey, string? locale, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         Guid? collectionId = await _store.ResolveCollectionAsync(connection, null, tenant, collectionKey, ct);
 
@@ -180,6 +180,11 @@ public sealed class DocumentReader
     public async Task<int> SoftDeleteAsync(
         string tenant, string collectionKey, string externalKey, string? locale, CancellationToken ct)
     {
+        // OpenAsync, not OpenReadAsync, and it is the only method in this file that is. Everything
+        // else here reads; this one UPDATEs. The class is called DocumentReader, so a later sweep
+        // that routes "the reader" to the standby wholesale would land exactly here — and a
+        // standby rejects the write, so the delete would start failing at runtime for a reason the
+        // file name actively argues against.
         await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
 
         Guid? collectionId = await _store.ResolveCollectionAsync(connection, null, tenant, collectionKey, ct);
@@ -207,7 +212,7 @@ public sealed class DocumentReader
     public async Task<RevisionListResponse?> ListRevisionsAsync(
         string tenant, string collectionKey, string externalKey, string? locale, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         Guid? collectionId = await _store.ResolveCollectionAsync(connection, null, tenant, collectionKey, ct);
 
@@ -249,7 +254,7 @@ public sealed class DocumentReader
 
     public async Task<StatsResponse> StatsAsync(string tenant, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         StatsResponse stats = new() { Schema = _tables.Name };
 
@@ -347,7 +352,7 @@ public sealed class DocumentReader
 
     public async Task<int> StaleChunkCountAsync(string normalizerTag, string expectedHash, CancellationToken ct)
     {
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
         await using NpgsqlCommand command = _connections.CreateCommand(connection,
             $"SELECT count(*) FROM {_tables.Chunks} WHERE normalizer_tag = @tag AND normalizer_hash <> @hash");
         command.Parameters.AddWithValue("tag", normalizerTag);

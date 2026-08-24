@@ -100,7 +100,7 @@ public sealed class VectorSearch
         // that lexical answers confidently lost their answer entirely.
         int candidates = Math.Max(limit, _options.MinCandidates / _options.CandidateMultiplier);
 
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         await using (NpgsqlCommand tune = _connections.CreateCommand(
             connection, $"SET hnsw.ef_search = {_options.HnswEfSearch}"))

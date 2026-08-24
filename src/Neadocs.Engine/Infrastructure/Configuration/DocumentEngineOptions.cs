@@ -9,6 +9,17 @@ public sealed class DocumentEngineOptions
     public string PostgresConnectionString { get; set; } =
         "Host=127.0.0.1;Port=5432;Database=neadocs;Username=neadocs;Password=";
 
+    /// <summary>
+    /// Where read-only queries go. Empty means "the same server as writes", which is correct on a
+    /// single-node database and is the default so nothing has to be configured to keep working.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a separate string rather than a host override: the read connection legitimately
+    /// differs in pool size and application name as well as host, and the estate sets all three.
+    /// A standby that falls behind is not used — see <c>NpgsqlDataSourceFactory</c> for the guard.
+    /// </remarks>
+    public string PostgresReadConnectionString { get; set; } = string.Empty;
+
     public string Schema { get; set; } = "neadocs";
 
     public string DefaultSearchMode { get; set; } = "hybrid";

@@ -179,7 +179,7 @@ public sealed class LexicalSearch
         IReadOnlyList<string> chain = LocaleChain(locale);
         (string[] configLocales, string[] configNames) = SearchConfigs(chain);
 
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         // `def` covers documents in a locale nothing declares a configuration for. It is a LEFT
         // JOIN plus COALESCE rather than an inner join precisely so those documents stay findable —
@@ -324,7 +324,7 @@ public sealed class LexicalSearch
 
         IReadOnlyList<string> chain = LocaleChain(locale);
 
-        await using NpgsqlConnection connection = await _connections.OpenAsync(ct);
+        await using NpgsqlConnection connection = await _connections.OpenReadAsync(ct);
 
         await using (NpgsqlCommand tune = _connections.CreateCommand(
             connection,
