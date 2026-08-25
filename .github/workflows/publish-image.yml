@@ -18,11 +18,22 @@
 name: Publish image
 
 on:
+  # ── WHY NOT `branches: [main]` ────────────────────────────────────────────────────────────────
+  #
+  # It was, and the result was that this workflow had NEVER RUN. Argo CD deploys this repository
+  # from a long-lived branch -- eight of the nine services are between 12 and 109 commits ahead of
+  # main -- so a trigger scoped to main fires on a branch nobody deploys. Every image running in
+  # the cluster had been built by hand on a laptop and pushed, and nothing said so: the workflow
+  # file existed, was valid, and was green by never having been asked to do anything.
+  #
+  # Building every branch is deliberate and is not as loose as it looks. The tag carries the branch
+  # name, and Argo CD Image Updater watches exactly ONE tag per service -- whichever branch that
+  # service's Application tracks. So other branches build, and are pushed, and deploy nothing.
+  # The branch that is deployed is the branch that is built, which is the property that was missing.
   push:
-    branches: [main]
-  # Manual runs exist for the case where main is fine and the registry is not — a deleted package,
-  # a failed push, a retag. Rebuilding from an unchanged commit must be possible without an empty
-  # commit to trigger it.
+  # Manual runs exist for the case where the branch is fine and the registry is not -- a deleted
+  # package, a failed push, a retag. Rebuilding from an unchanged commit must be possible without an
+  # empty commit to trigger it.
   workflow_dispatch:
 
 concurrency:
@@ -60,6 +71,15 @@ jobs:
             exit 1
           fi
 
+      # A Docker tag cannot contain '/', and every branch here has one: harden/outbox-observability,
+      # feature/authorization-rbac-pdp. Left unsanitised the push is rejected by the registry at the
+      # very end of the build, after the slow part has already been paid for.
+      - name: Work out the tag for this branch
+        run: |
+          branch="${GITHUB_REF_NAME}"
+          echo "BRANCH_TAG=${branch//\//-}" >> "$GITHUB_ENV"
+          echo "  ${branch} -> ${branch//\//-}"
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -76,7 +96,7 @@ jobs:
           push: true
           # TWO tags, doing different jobs.
           #
-          # :main is a moving pointer and is ONLY an input to Image Updater — it is never what a
+          # The branch tag is a moving pointer and is ONLY an input to Image Updater — it is never what a
           # manifest names. Image Updater resolves it to a digest and commits that digest, so what
           # git holds, and therefore what the cluster runs, is always immutable. Rollback stays a
           # git revert.
@@ -84,7 +104,7 @@ jobs:
           # :sha is the permanent record. A moving tag alone would make "which build is this pod
           # running" unanswerable after the next push.
           tags: |
-            ghcr.io/neavents/neadocs:main
+            ghcr.io/neavents/neadocs:${{ env.BRANCH_TAG }}
             ghcr.io/neavents/neadocs:${{ github.sha }}
           build-args: |
             GITHUB_USER=${{ github.actor }}
@@ -98,6 +118,6 @@ jobs:
         run: |
           echo "### Published" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '- `ghcr.io/neavents/neadocs:main` -> `${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- `ghcr.io/neavents/neadocs:${{ env.BRANCH_TAG }}` -> `${{ github.sha }}`' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Argo CD Image Updater picks this up within its poll interval and commits the digest." >> "$GITHUB_STEP_SUMMARY"
