@@ -10,11 +10,44 @@ using Npgsql;
 
 public sealed class NpgsqlDataSourceFactory : IAsyncDisposable
 {
-    /// <summary>A standby further behind than this is not read from.</summary>
-    private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// Past this, reads go to the primary. <b>100ms — measured, not chosen for comfort.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This was one second. Across 450 trials — insert, commit, then poll a standby until the row
+    /// appears — the estate replicates at a median of <b>0.17ms</b>, p99 under 0.75ms, worst
+    /// observed 1.06ms. A one-second gate therefore allowed a staleness window some three thousand
+    /// times worse than anything ever seen here, which makes it not a guard: any lag bad enough to
+    /// matter would have passed it.
+    /// </para>
+    /// <para>
+    /// 100ms is still ~140x the measured p99, so ordinary jitter cannot trip it, while a standby
+    /// that has genuinely fallen behind leaves rotation long before anyone notices by hand.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromMilliseconds(100);
 
     /// <summary>How often the lag is re-measured. Cheap, but not free, and it need not be exact.</summary>
     private static readonly TimeSpan SampleEvery = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How old a lag READING may be before it stops counting as evidence.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="StaleAfter"/> bounds how far behind the standby was AT THE LAST SAMPLE. It says
+    /// nothing about now. Samples are taken every <see cref="SampleEvery"/> by a fire-and-forget
+    /// task, off the request path — and a task that stops (a swallowed exception, a wedged
+    /// connection, a sampler that never reschedules) leaves the last good reading in place
+    /// indefinitely. Reads would then keep choosing the replica on the strength of a measurement
+    /// taken minutes ago, which IS the unknown-lag case this guard exists to refuse.
+    /// <para>
+    /// Three sample intervals: long enough that one slow or missed sample does not flap the estate
+    /// onto the primary, short enough that a sampler which has genuinely stopped is caught in
+    /// about a minute and a half.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan ReadingExpiresAfter = TimeSpan.FromTicks(SampleEvery.Ticks * 3);
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly NpgsqlDataSource _readDataSource;
@@ -125,7 +158,8 @@ public sealed class NpgsqlDataSourceFactory : IAsyncDisposable
         // -1 means "not measured, or the measurement failed". Both send the read to the primary:
         // an unknown standby is not a usable standby, and defaulting the other way would serve
         // arbitrarily stale documents the first time the probe could not run.
-        return ticks >= 0 && ticks <= StaleAfter.Ticks;
+        return ticks >= 0 && ticks <= StaleAfter.Ticks
+            && DateTimeOffset.UtcNow.UtcTicks - Interlocked.Read(ref _lastSampleAtTicks) <= ReadingExpiresAfter.Ticks;
     }
 
     public async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)
