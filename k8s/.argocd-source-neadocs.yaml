@@ -1,0 +1,3 @@
+kustomize:
+  images:
+  - ghcr.io/neavents/neadocs:main@sha256:af2e50644b323f40431048fb4f9ae14b0dbd58ea57e67a2b8b92d1e94d4c6a7e
