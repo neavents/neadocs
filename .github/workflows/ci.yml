@@ -2,6 +2,12 @@ name: ci
 
 on:
   push:
+    # Argo CD Image Updater commits digests into k8s/, and nothing under k8s/ can change a test
+    # result. Without this, every automatic digest commit reruns the whole suite -- which is where
+    # today's failure emails came from: runs queued against commits that predated the fix.
+    paths-ignore:
+      - 'k8s/**'
+      - '**.md'
     branches: [main]
   pull_request:
 
