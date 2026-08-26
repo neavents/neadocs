@@ -24,7 +24,16 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        # pgvector, not stock postgres.
+        #
+        # The integration suite creates a schema and runs CREATE EXTENSION vector. On a stock image
+        # that fails with `extension "vector" is not available`, the schema is never finished, and
+        # every query afterwards fails with `relation ... does not exist` -- which reads like a
+        # migration bug and is a missing extension.
+        #
+        # pg17 matches what the estate actually runs: CloudNativePG's postgresql:17.6-bookworm with
+        # pgvector 0.8.0. A test database that cannot do what production does is not a test.
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: neadocs
           POSTGRES_PASSWORD: neadocs_dev
