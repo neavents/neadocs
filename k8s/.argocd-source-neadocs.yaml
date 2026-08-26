@@ -1,3 +1,3 @@
 kustomize:
   images:
-  - neavents/neadocs=ghcr.io/neavents/neadocs:main@sha256:1cf6f1ce8c355ecb075a65085c29188174f772279af43ae435faa8990d123df0
+  - neavents/neadocs=ghcr.io/neavents/neadocs:main@sha256:dd8ab37ce0eaaab0a7c7029f43a9c11d74a3c0d5e1325e33beb0338519f2f8bc
