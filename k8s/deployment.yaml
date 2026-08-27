@@ -126,13 +126,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: neadocs-secrets
-                  key: documentengine_allowedprojectkeys
+                  key: DocumentEngine__AllowedProjectKeys
                   optional: true
             - name: DocumentEngine__JwtSymmetricKey
               valueFrom:
                 secretKeyRef:
                   name: neadocs-secrets
-                  key: documentengine_jwtsymmetrickey
+                  key: DocumentEngine__JwtSymmetricKey
                   optional: true
           envFrom:
             - secretRef:
