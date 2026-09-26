@@ -358,6 +358,76 @@ public sealed class EmbeddingGuardTests : IAsyncLifetime
             .Should().BeEmpty("it is leased to the first caller until the lease expires");
     }
 
+    [Fact]
+    public async Task AddingAModelToAnExistingCorpusQueuesEveryChunkWithoutAVector()
+    {
+        await Migrator(Options()).MigrateAsync(CancellationToken.None);
+        await SeedChunkAsync();
+        await SeedChunkAsync();
+
+        DocumentEngineOptions options = Options(Model(16));
+        await Migrator(options).MigrateAsync(CancellationToken.None);
+
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog WHERE model_slug = 'guard_model'"))
+            .Should().Be(2, "chunks written before the model existed were never queued by any write");
+
+        EmbeddingStore store = await BuildStoreAsync(options, new ThrowingEmbeddingProvider("guard-model", 16, () => false));
+        EmbeddingBacklogWorker worker = new(
+            store,
+            new EmbeddingModelRegistry(options),
+            Microsoft.Extensions.Options.Options.Create(options),
+            NullLogger<EmbeddingBacklogWorker>.Instance);
+
+        await worker.DrainAsync(CancellationToken.None);
+
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.chunk_embeddings__guard_model")).Should().Be(2);
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog")).Should().Be(0);
+
+        await Migrator(options).MigrateAsync(CancellationToken.None);
+
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog"))
+            .Should().Be(0, "a corpus that is fully embedded has nothing to queue on the next boot");
+    }
+
+    [Fact]
+    public async Task TheBackfillSkipsDeletedDocumentsAndSupersededRevisions()
+    {
+        await Migrator(Options()).MigrateAsync(CancellationToken.None);
+        Guid live = await SeedChunkAsync();
+        Guid deleted = await SeedChunkAsync();
+        Guid superseded = await SeedChunkAsync();
+
+        await using (NpgsqlConnection connection = new(ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using NpgsqlCommand command = connection.CreateCommand();
+            command.CommandText = $"""
+                UPDATE {_schema}.documents SET deleted_at = now()
+                WHERE id = (SELECT document_id FROM {_schema}.chunks WHERE id = '{deleted}');
+                UPDATE {_schema}.documents SET current_revision = 2
+                WHERE id = (SELECT document_id FROM {_schema}.chunks WHERE id = '{superseded}');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await Migrator(Options(Model(16))).MigrateAsync(CancellationToken.None);
+
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog WHERE chunk_id = '{live}'")).Should().Be(1);
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ARetiredModelIsNotBackfilled()
+    {
+        await Migrator(Options(Model(8))).MigrateAsync(CancellationToken.None);
+        await SeedOneVectorAsync();
+        await SeedChunkAsync();
+
+        await Migrator(Options(Model(8, retired: true))).MigrateAsync(CancellationToken.None);
+
+        (await ScalarAsync($"SELECT count(*) FROM {_schema}.embedding_backlog")).Should().Be(0);
+    }
+
     /// <summary>Brings every backlog row due now, so the claim can be exercised without waiting.</summary>
     private async Task MakeBacklogDueAsync()
     {

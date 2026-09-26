@@ -89,6 +89,54 @@ public sealed class EmbeddingTableMigrator
                 + "to build. Restore the entry, or declare it with \"Retired\": true to stop "
                 + "writing while keeping the data.");
         }
+
+        foreach (EmbeddingModelDescriptor model in _models.All)
+        {
+            if (model.Retired)
+            {
+                continue;
+            }
+
+            long queued = await BackfillAsync(connection, transaction, model, ct);
+
+            if (queued > 0)
+            {
+                _logger.LogInformation(
+                    "Queued {Count} chunk(s) with no {Model} embedding for the backlog worker.",
+                    queued, model.Slug);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Queue every live chunk that has no vector for this model.
+    /// </summary>
+    /// <remarks>
+    /// Only new and re-chunked text is ever queued at write time, so adding a model to a corpus that
+    /// already exists left every chunk unembedded: search answered <c>degraded</c> until someone knew
+    /// to run a reindex. Doing it here means configuring a model is enough, on every environment.
+    /// The embedding cache is keyed by content hash, so text embedded before costs no provider call.
+    /// </remarks>
+    private async Task<long> BackfillAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        EmbeddingModelDescriptor model,
+        CancellationToken ct)
+    {
+        string table = $"{_tables.Name}.{SchemaTables.EmbeddingTableName(model.Slug)}";
+
+        await using NpgsqlCommand command = _connections.CreateCommand(connection, transaction, $"""
+            INSERT INTO {_tables.EmbeddingBacklog} (chunk_id, model_slug)
+            SELECT c.id, @slug
+            FROM {_tables.Chunks} c
+            JOIN {_tables.Documents} d
+              ON d.id = c.document_id AND d.deleted_at IS NULL AND c.revision = d.current_revision
+            WHERE NOT EXISTS (SELECT 1 FROM {table} e WHERE e.chunk_id = c.id)
+            ON CONFLICT (chunk_id, model_slug) DO NOTHING
+            """);
+        command.Parameters.AddWithValue("slug", model.Slug);
+
+        return await command.ExecuteNonQueryAsync(ct);
     }
 
     private async Task CreateAsync(
