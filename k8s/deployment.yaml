@@ -158,6 +158,64 @@ spec:
                   name: neadocs-secrets
                   key: DocumentEngine__JwtSymmetricKey
                   optional: true
+            - name: DocumentEngine__Schema
+              value: "neadocs"
+            - name: DocumentEngine__DefaultSearchMode
+              value: "hybrid"
+            - name: DocumentEngine__EmbeddingModels__0__Provider
+              value: "gemini"
+            - name: DocumentEngine__EmbeddingModels__0__Model
+              value: "gemini-embedding-001"
+            - name: DocumentEngine__EmbeddingModels__0__Dimensions
+              value: "768"
+            - name: DocumentEngine__Providers__gemini__BaseUrl
+              value: "https://generativelanguage.googleapis.com/"
+            - name: DocumentEngine__Text__Locales__0
+              value: "tr"
+            - name: DocumentEngine__Text__Locales__1
+              value: "en"
+            - name: DocumentEngine__Text__Locales__2
+              value: "ar"
+            - name: DocumentEngine__Text__Locales__3
+              value: "fa"
+            - name: DocumentEngine__Text__Locales__4
+              value: "he"
+            - name: DocumentEngine__Text__DefaultLocale
+              value: "tr"
+            - name: DocumentEngine__Text__LocaleFallback__tr__0
+              value: "en"
+            - name: DocumentEngine__Text__TrigramThreshold
+              value: "0.45"
+            - name: DocumentEngine__Text__Synonyms__tr__0__Terms__0
+              value: "şifre"
+            - name: DocumentEngine__Text__Synonyms__tr__0__Terms__1
+              value: "parola"
+            - name: DocumentEngine__Text__Synonyms__tr__1__Terms__0
+              value: "qr"
+            - name: DocumentEngine__Text__Synonyms__tr__1__Terms__1
+              value: "kare kod"
+            - name: DocumentEngine__Text__Synonyms__tr__2__Terms__0
+              value: "mekan"
+            - name: DocumentEngine__Text__Synonyms__tr__2__Terms__1
+              value: "işletme"
+            - name: DocumentEngine__Text__Synonyms__tr__3__Terms__0
+              value: "fatura"
+            - name: DocumentEngine__Text__Synonyms__tr__3__Terms__1
+              value: "makbuz"
+            - name: DocumentEngine__Text__Synonyms__en__0__Terms__0
+              value: "password"
+            - name: DocumentEngine__Text__Synonyms__en__0__Terms__1
+              value: "passcode"
+            - name: DocumentEngine__Text__Synonyms__en__1__Terms__0
+              value: "venue"
+            - name: DocumentEngine__Text__Synonyms__en__1__Terms__1
+              value: "location"
+            - name: DocumentEngine__Text__Synonyms__en__2__Terms__0
+              value: "invoice"
+            - name: DocumentEngine__Text__Synonyms__en__2__Terms__1
+              value: "receipt"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
           envFrom:
             - secretRef:
                 name: neadocs-secrets
