@@ -22,7 +22,12 @@ public sealed class EmbeddingRequestFailedException : Exception
 
 public abstract class HttpEmbeddingProvider : IEmbeddingProvider, IDisposable
 {
-    protected HttpEmbeddingProvider(string name, string model, int dimensions, ProviderOptions options)
+    protected HttpEmbeddingProvider(
+        string name,
+        string model,
+        int dimensions,
+        ProviderOptions options,
+        HttpMessageHandler? handler = null)
     {
         Name = name;
         Model = model;
@@ -31,11 +36,11 @@ public abstract class HttpEmbeddingProvider : IEmbeddingProvider, IDisposable
         MaxConcurrentRequests = options.MaxConcurrentRequests;
         ApiKey = options.ApiKey;
 
-        Client = new HttpClient
-        {
-            BaseAddress = new Uri(options.BaseUrl),
-            Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
-        };
+        Client = handler is null
+            ? new HttpClient()
+            : new HttpClient(handler, disposeHandler: false);
+        Client.BaseAddress = new Uri(options.BaseUrl);
+        Client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
     }
 
     public string Name { get; }
@@ -93,15 +98,29 @@ public abstract class HttpEmbeddingProvider : IEmbeddingProvider, IDisposable
         }
     }
 
-    protected static float[] ReadVector(JsonElement array)
+    protected static float[] ReadVector(string providerName, JsonElement array)
     {
+        if (array.ValueKind != JsonValueKind.Array)
+        {
+            throw new EmbeddingRequestFailedException(
+                $"{providerName} returned a non-array embedding vector.");
+        }
+
         int length = array.GetArrayLength();
         float[] vector = new float[length];
         int i = 0;
 
         foreach (JsonElement value in array.EnumerateArray())
         {
-            vector[i++] = value.GetSingle();
+            if (value.ValueKind != JsonValueKind.Number
+                || !value.TryGetSingle(out float element)
+                || !float.IsFinite(element))
+            {
+                throw new EmbeddingRequestFailedException(
+                    $"{providerName} returned an invalid or non-finite vector element.");
+            }
+
+            vector[i++] = element;
         }
 
         return vector;
@@ -115,8 +134,12 @@ public sealed class OpenAiEmbeddingProvider : HttpEmbeddingProvider
 {
     public const string ProviderName = "openai";
 
-    public OpenAiEmbeddingProvider(string model, int dimensions, ProviderOptions options)
-        : base(ProviderName, model, dimensions, options)
+    public OpenAiEmbeddingProvider(
+        string model,
+        int dimensions,
+        ProviderOptions options,
+        HttpMessageHandler? handler = null)
+        : base(ProviderName, model, dimensions, options, handler)
     {
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey);
     }
@@ -141,11 +164,23 @@ public sealed class OpenAiEmbeddingProvider : HttpEmbeddingProvider
 
         using JsonDocument document = await PostAsync("v1/embeddings", payload.ToString(), ct);
 
+        if (!document.RootElement.TryGetProperty("data", out JsonElement data)
+            || data.ValueKind != JsonValueKind.Array)
+        {
+            throw new EmbeddingRequestFailedException($"{ProviderName} response omitted 'data' array.");
+        }
+
         List<float[]> vectors = [];
 
-        foreach (JsonElement item in document.RootElement.GetProperty("data").EnumerateArray())
+        foreach (JsonElement item in data.EnumerateArray())
         {
-            vectors.Add(ReadVector(item.GetProperty("embedding")));
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("embedding", out JsonElement embedding))
+            {
+                throw new EmbeddingRequestFailedException($"{ProviderName} response item omitted 'embedding'.");
+            }
+
+            vectors.Add(ReadVector(ProviderName, embedding));
         }
 
         return vectors;
@@ -156,8 +191,12 @@ public sealed class GeminiEmbeddingProvider : HttpEmbeddingProvider
 {
     public const string ProviderName = "gemini";
 
-    public GeminiEmbeddingProvider(string model, int dimensions, ProviderOptions options)
-        : base(ProviderName, model, dimensions, options)
+    public GeminiEmbeddingProvider(
+        string model,
+        int dimensions,
+        ProviderOptions options,
+        HttpMessageHandler? handler = null)
+        : base(ProviderName, model, dimensions, options, handler)
     {
     }
 
@@ -186,11 +225,23 @@ public sealed class GeminiEmbeddingProvider : HttpEmbeddingProvider
 
         using JsonDocument document = await PostAsync(path, payload.ToString(), ct);
 
+        if (!document.RootElement.TryGetProperty("embeddings", out JsonElement embeddings)
+            || embeddings.ValueKind != JsonValueKind.Array)
+        {
+            throw new EmbeddingRequestFailedException($"{ProviderName} response omitted 'embeddings' array.");
+        }
+
         List<float[]> vectors = [];
 
-        foreach (JsonElement item in document.RootElement.GetProperty("embeddings").EnumerateArray())
+        foreach (JsonElement item in embeddings.EnumerateArray())
         {
-            vectors.Add(ReadVector(item.GetProperty("values")));
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("values", out JsonElement values))
+            {
+                throw new EmbeddingRequestFailedException($"{ProviderName} response item omitted 'values'.");
+            }
+
+            vectors.Add(ReadVector(ProviderName, values));
         }
 
         return vectors;

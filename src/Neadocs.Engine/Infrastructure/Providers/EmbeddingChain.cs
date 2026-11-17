@@ -120,6 +120,24 @@ public sealed class EmbeddingChain : IAsyncDisposable
                     $"{link.Provider.Name} returned {vectors.Count} vectors for {batch.Count} inputs.");
             }
 
+            foreach (float[] vec in vectors)
+            {
+                if (vec.Length != link.Model.Dimensions)
+                {
+                    throw new EmbeddingRequestFailedException(
+                        $"{link.Provider.Name} returned vector with {vec.Length} dimensions; expected {link.Model.Dimensions}.");
+                }
+
+                foreach (float v in vec)
+                {
+                    if (!float.IsFinite(v))
+                    {
+                        throw new EmbeddingRequestFailedException(
+                            $"{link.Provider.Name} returned a non-finite vector element.");
+                    }
+                }
+            }
+
             all.AddRange(vectors);
         }
 

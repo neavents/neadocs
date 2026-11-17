@@ -27,7 +27,7 @@ public sealed class VectorTestHost : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("DocumentEngine__PostgresConnectionString", ConnectionString);
         Environment.SetEnvironmentVariable("DocumentEngine__Schema", Schema);
         Environment.SetEnvironmentVariable("DocumentEngine__AllowedProjectKeys", $"{Tenant}:{AdminKey}:admin");
-        Environment.SetEnvironmentVariable("DocumentEngine__JwtSymmetricKey", new string('v', 40));
+        Environment.SetEnvironmentVariable("DocumentEngine__JwtSymmetricKey", NeadocsTestHost.JwtKey);
         Environment.SetEnvironmentVariable("DocumentEngine__Text__Locales__0", "tr");
         Environment.SetEnvironmentVariable("DocumentEngine__Text__Locales__1", "en");
         Environment.SetEnvironmentVariable("DocumentEngine__Text__DefaultLocale", "tr");

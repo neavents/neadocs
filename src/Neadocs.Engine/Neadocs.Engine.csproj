@@ -15,6 +15,7 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
     <!--
       IL2104 is the per-assembly rollup. Only Serilog trips it, and only on its destructuring

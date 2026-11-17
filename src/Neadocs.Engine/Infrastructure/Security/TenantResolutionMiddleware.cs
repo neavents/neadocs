@@ -103,7 +103,7 @@ public static class TenantResolutionMiddleware
             return null;
         }
 
-        string? presented = header.Count > 0 ? header[0] : null;
+        string? presented = header.Count == 1 ? header[0] : null;
 
         return validator.TryResolve(presented, out string tenant, out DocumentScope scopes)
             ? new RequestPrincipal(tenant, scopes, RequestPrincipal.ProjectKeyMechanism)

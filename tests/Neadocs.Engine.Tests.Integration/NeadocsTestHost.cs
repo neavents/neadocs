@@ -72,6 +72,10 @@ public sealed class NeadocsTestHost : WebApplicationFactory<Program>, IAsyncLife
 
     public async Task InitializeAsync()
     {
+        // Re-assert process-wide JWT setting in case another test host (e.g. VectorTestHost) ran
+        // in the same process before NCollection initialized its own WebApplicationFactory.
+        Environment.SetEnvironmentVariable("DocumentEngine__JwtSymmetricKey", JwtKey);
+
         // Before anything else: clear out schemas that earlier runs left behind. Disposal already
         // drops this run's own, and thirty-three had still accumulated — a run that is cancelled,
         // times out or crashes never reaches its teardown, so the cleanup has to happen on the way

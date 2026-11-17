@@ -456,6 +456,11 @@ public sealed class EmbeddingStore
 
     public static string Literal(float[] vector)
     {
+        if (vector.Length == 0)
+        {
+            throw new ArgumentException("Embedding vector must not be empty.", nameof(vector));
+        }
+
         StringBuilder builder = new(vector.Length * 8);
         builder.Append('[');
 
@@ -464,6 +469,12 @@ public sealed class EmbeddingStore
             if (i > 0)
             {
                 builder.Append(',');
+            }
+
+            if (!float.IsFinite(vector[i]))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(vector), "Embedding vector elements must be finite.");
             }
 
             builder.Append(vector[i].ToString("R", CultureInfo.InvariantCulture));

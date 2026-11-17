@@ -241,7 +241,14 @@ app.Use(async (HttpContext context, RequestDelegate next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    await next(context);
+    try
+    {
+        await next(context);
+    }
+    catch (BadHttpRequestException ex) when (!context.Response.HasStarted)
+    {
+        await Problem.WriteAsync(context, ex.StatusCode, "Invalid request", ex.Message);
+    }
 });
 
 app.UseNeadocsCorrelationId();

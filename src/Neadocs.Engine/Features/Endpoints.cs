@@ -61,12 +61,61 @@ public static class Endpoints
                 + $"route requires {DocumentScopeNames.Format(required)}.");
     }
 
+    private static bool ContainsNullChar(string? value) =>
+        value is not null && value.IndexOf('\0') >= 0;
+
+    private static bool ContainsNullChar(JsonElement? element) =>
+        element is { } value && ContainsNullCharInJson(value);
+
+    private static bool ContainsNullCharInJson(JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.String:
+                return ContainsNullChar(value.GetString());
+            case JsonValueKind.Array:
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    if (ContainsNullCharInJson(item))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            case JsonValueKind.Object:
+                foreach (JsonProperty prop in value.EnumerateObject())
+                {
+                    if (ContainsNullChar(prop.Name) || ContainsNullCharInJson(prop.Value))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static IResult? GuardNullChars(HttpContext context, params string?[] values)
+    {
+        foreach (string? value in values)
+        {
+            if (ContainsNullChar(value))
+            {
+                return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
+                    "Input values must not contain NUL bytes.");
+            }
+        }
+
+        return null;
+    }
+
     private static IResult? ValidateKey(HttpContext context, string key, string name)
     {
-        if (string.IsNullOrWhiteSpace(key) || key.Length > 128)
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || ContainsNullChar(key))
         {
             return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
-                $"{name} must be between 1 and 128 characters.");
+                $"{name} must be between 1 and 128 characters and contain no NUL bytes.");
         }
 
         return null;
@@ -95,6 +144,13 @@ public static class Endpoints
         if (ValidateKey(context, key, "Collection key") is IResult invalid)
         {
             return invalid;
+        }
+
+        if (GuardNullChars(context, request.Name) is IResult badText
+            || ContainsNullChar(request.Config))
+        {
+            return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
+                "Collection fields must not contain NUL bytes.");
         }
 
         string name = string.IsNullOrWhiteSpace(request.Name) ? key : request.Name;
@@ -139,6 +195,11 @@ public static class Endpoints
             return denied;
         }
 
+        if (GuardNullChars(context, key) is IResult badKey)
+        {
+            return badKey;
+        }
+
         bool removed = await store.DeleteCollectionAsync(principal.Tenant, key, ct);
 
         return removed
@@ -173,6 +234,14 @@ public static class Endpoints
                 "'content' must not be empty.");
         }
 
+        if (GuardNullChars(context, key, request.Title, request.Content, request.SourceUri,
+                request.SourceLocale, request.SourceContentHash) is not null
+            || ContainsNullChar(request.Metadata))
+        {
+            return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
+                "Document fields must not contain NUL bytes.");
+        }
+
         bool force = context.Request.Query.TryGetValue("force", out Microsoft.Extensions.Primitives.StringValues f)
             && string.Equals(f.ToString(), "true", StringComparison.OrdinalIgnoreCase);
 
@@ -196,6 +265,11 @@ public static class Endpoints
         if (Guard(context, DocumentScope.Write, out RequestPrincipal principal) is IResult denied)
         {
             return denied;
+        }
+
+        if (GuardNullChars(context, key) is IResult badKey)
+        {
+            return badKey;
         }
 
         int max = options.Value.MaxBulkDocuments;
@@ -228,6 +302,17 @@ public static class Endpoints
             {
                 result.Status = StatusCodes.Status400BadRequest;
                 result.Error = "'externalKey' and 'content' are required.";
+                response.Results.Add(result);
+                continue;
+            }
+
+            if (ContainsNullChar(item.ExternalKey) || ContainsNullChar(item.Title)
+                || ContainsNullChar(item.Content) || ContainsNullChar(item.SourceUri)
+                || ContainsNullChar(item.SourceLocale) || ContainsNullChar(item.SourceContentHash)
+                || ContainsNullChar(item.Metadata))
+            {
+                result.Status = StatusCodes.Status400BadRequest;
+                result.Error = "Document fields must not contain NUL bytes.";
                 response.Results.Add(result);
                 continue;
             }
@@ -280,6 +365,12 @@ public static class Endpoints
         string? locale = context.Request.Query["locale"].ToString();
         string? staleAgainst = context.Request.Query["staleAgainst"].ToString();
         string? cursor = context.Request.Query["cursor"].ToString();
+
+        if (GuardNullChars(context, key, locale, staleAgainst, cursor) is IResult badParams)
+        {
+            return badParams;
+        }
+
         int limit = int.TryParse(context.Request.Query["limit"], out int parsed) ? Math.Clamp(parsed, 1, 200) : 50;
 
         DocumentListResponse? payload = await reader.ListAsync(
@@ -304,6 +395,11 @@ public static class Endpoints
         }
 
         string localeRaw = context.Request.Query["locale"].ToString();
+        if (GuardNullChars(context, key, externalKey, localeRaw) is IResult badParams)
+        {
+            return badParams;
+        }
+
         string? locale = string.IsNullOrWhiteSpace(localeRaw) ? null : LocaleTag.Normalize(localeRaw);
 
         (DocumentResponse? document, int matches) =
@@ -330,6 +426,11 @@ public static class Endpoints
         }
 
         string localeRaw = context.Request.Query["locale"].ToString();
+        if (GuardNullChars(context, key, externalKey, localeRaw) is IResult badParams)
+        {
+            return badParams;
+        }
+
         string? locale = string.IsNullOrWhiteSpace(localeRaw) ? null : LocaleTag.Normalize(localeRaw);
 
         int removed = await reader.SoftDeleteAsync(principal.Tenant, key, externalKey, locale, ct);
@@ -349,6 +450,11 @@ public static class Endpoints
         }
 
         string localeRaw = context.Request.Query["locale"].ToString();
+        if (GuardNullChars(context, key, externalKey, localeRaw) is IResult badParams)
+        {
+            return badParams;
+        }
+
         string? locale = string.IsNullOrWhiteSpace(localeRaw) ? null : LocaleTag.Normalize(localeRaw);
 
         RevisionListResponse? payload =
@@ -375,6 +481,13 @@ public static class Endpoints
         {
             return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
                 "'query' must not be empty.");
+        }
+
+        if (GuardNullChars(context, key, request.Query, request.Mode) is not null
+            || ContainsNullChar(request.Filter))
+        {
+            return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
+                "Search parameters must not contain NUL bytes.");
         }
 
         if (request.Query.Length > engine.MaxQueryLength)
@@ -496,6 +609,13 @@ public static class Endpoints
                 "'collection' and at least one case are required.");
         }
 
+        if (GuardNullChars(context, request.Collection, request.Locale, request.Mode) is not null
+            || request.Cases.Exists(c => ContainsNullChar(c.Query)))
+        {
+            return Problem.Result(context, StatusCodes.Status400BadRequest, "Invalid request",
+                "Evaluation inputs must not contain NUL bytes.");
+        }
+
         EvalReport? report = await runner.RunAsync(principal.Tenant, request, ct);
 
         if (report is null)
@@ -558,6 +678,11 @@ public static class Endpoints
         }
 
         string localeRaw = context.Request.Query["locale"].ToString();
+        if (GuardNullChars(context, key, localeRaw) is IResult badParams)
+        {
+            return badParams;
+        }
+
         string? locale = string.IsNullOrWhiteSpace(localeRaw) ? null : LocaleTag.Normalize(localeRaw);
 
         Guid? jobId = await reindex.QueueAsync(principal.Tenant, key, locale, ct);
